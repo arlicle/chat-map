@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "ChatMap",
+  "version": "0.1.0",
+  "description": "Show previous user questions in a right sidebar and jump to them in ChatGPT conversations.",
+  "permissions": [
+    "storage"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "src/storage.js",
+        "src/extractor.js",
+        "src/navigator.js",
+        "src/panel.js",
+        "src/observer.js",
+        "src/content.js"
+      ],
+      "css": [
+        "src/styles.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
