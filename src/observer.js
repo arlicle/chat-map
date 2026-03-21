@@ -2,6 +2,19 @@
   const root = window.__QNAV__ = window.__QNAV__ || {};
   const TOP_OFFSET = root.navigator ? root.navigator.TOP_OFFSET : 96;
   const MUTATION_DEBOUNCE_MS = 180;
+  const MESSAGE_SELECTOR = "[data-message-author-role], article, [data-testid^='conversation-turn-']";
+
+  function buildQuestionSignature(items) {
+    return (Array.isArray(items) ? items : []).map((item) => item && item.id).filter(Boolean).join("|");
+  }
+
+  function isMessageRelatedElement(element) {
+    if (!(element instanceof Element)) {
+      return false;
+    }
+
+    return element.matches(MESSAGE_SELECTOR) || Boolean(element.querySelector(MESSAGE_SELECTOR));
+  }
 
   function createQuestionVisibilityTracker(options) {
     const config = options || {};
@@ -9,6 +22,7 @@
     let observer = null;
     let frameId = null;
     let currentActiveId = null;
+    let observedSignature = "";
 
     function computeActiveQuestionId() {
       if (!questions.length) {
@@ -57,9 +71,23 @@
 
     function observeQuestions(nextQuestions) {
       questions = Array.isArray(nextQuestions) ? nextQuestions.slice() : [];
+      const nextSignature = buildQuestionSignature(questions);
+
+      if (nextSignature === observedSignature && observer) {
+        scheduleEmit();
+        return;
+      }
+
+      observedSignature = nextSignature;
 
       if (observer) {
         observer.disconnect();
+        observer = null;
+      }
+
+      if (!questions.length) {
+        scheduleEmit();
+        return;
       }
 
       observer = new IntersectionObserver(scheduleEmit, {
@@ -87,6 +115,8 @@
         window.cancelAnimationFrame(frameId);
         frameId = null;
       }
+
+      window.removeEventListener("resize", scheduleEmit);
     }
 
     window.addEventListener("resize", scheduleEmit);
@@ -122,14 +152,22 @@
       });
     }
 
-    const observer = new MutationObserver((mutations) => {
-      const hasRelevantChange = mutations.some((mutation) => {
-        if (shouldIgnoreMutation(mutation)) {
-          return false;
-        }
+    function isRelevantMutation(mutation) {
+      if (shouldIgnoreMutation(mutation)) {
+        return false;
+      }
 
-        return mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0;
-      });
+      if (!(mutation.target instanceof Element) || !isMessageRelatedElement(mutation.target)) {
+        return Array.from(mutation.addedNodes).concat(Array.from(mutation.removedNodes)).some((node) => {
+          return isMessageRelatedElement(node);
+        });
+      }
+
+      return mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0;
+    }
+
+    const observer = new MutationObserver((mutations) => {
+      const hasRelevantChange = mutations.some(isRelevantMutation);
 
       if (!hasRelevantChange) {
         return;

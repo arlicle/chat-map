@@ -1,5 +1,6 @@
 (function initContentScript() {
   const root = window.__QNAV__ = window.__QNAV__ || {};
+  const NAVIGATION_EVENT = "qnav:navigation";
   if (root.appStarted) {
     return;
   }
@@ -23,6 +24,7 @@
   let panel = null;
   let adapter = null;
   let mutationObserver = null;
+  let observationRoot = null;
   let visibilityTracker = null;
   let syncScheduled = false;
 
@@ -53,12 +55,60 @@
     visibilityTracker.observeQuestions(appState.questions);
   }
 
+  function ensureMutationObserver() {
+    const nextObservationRoot = extractor.getObservationRoot();
+    if (mutationObserver && nextObservationRoot === observationRoot) {
+      return;
+    }
+
+    observationRoot = nextObservationRoot;
+    if (mutationObserver) {
+      mutationObserver.disconnect();
+    }
+
+    mutationObserver = observerModule.createConversationMutationObserver(
+      observationRoot,
+      scheduleSync
+    );
+  }
+
+  function dispatchNavigationEvent() {
+    window.dispatchEvent(new Event(NAVIGATION_EVENT));
+  }
+
+  function installHistoryChangeListener() {
+    if (!root.historyChangeListenerInstalled) {
+      const historyMethods = ["pushState", "replaceState"];
+
+      historyMethods.forEach((methodName) => {
+        const originalMethod = window.history[methodName];
+        if (typeof originalMethod !== "function") {
+          return;
+        }
+
+        window.history[methodName] = function patchedHistoryMethod() {
+          const result = originalMethod.apply(this, arguments);
+          dispatchNavigationEvent();
+          return result;
+        };
+      });
+
+      root.historyChangeListenerInstalled = true;
+    }
+
+    window.addEventListener(NAVIGATION_EVENT, scheduleSync);
+    window.addEventListener("popstate", scheduleSync);
+    window.addEventListener("hashchange", scheduleSync);
+  }
+
   function syncQuestions() {
     syncScheduled = false;
 
     if (window.location.href !== appState.currentUrl) {
       appState.currentUrl = window.location.href;
     }
+
+    ensureMutationObserver();
 
     const nextQuestions = extractor.extractQuestions(adapter);
     const nextSignature = buildQuestionsSignature(nextQuestions);
@@ -125,18 +175,8 @@
       onActiveChange: onActiveQuestionChange
     });
 
-    mutationObserver = observerModule.createConversationMutationObserver(
-      extractor.getObservationRoot(),
-      scheduleSync
-    );
-
-    window.addEventListener("popstate", scheduleSync);
-    window.addEventListener("hashchange", scheduleSync);
-    window.setInterval(() => {
-      if (window.location.href !== appState.currentUrl) {
-        scheduleSync();
-      }
-    }, 1000);
+    installHistoryChangeListener();
+    ensureMutationObserver();
 
     syncQuestions();
   }

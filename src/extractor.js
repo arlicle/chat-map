@@ -47,65 +47,65 @@
 
   function createChatGPTWebAdapter() {
     return {
-      getUserMessages() {
-        return getRoleNodes().filter((node) => node.getAttribute("data-message-author-role") === "user");
-      },
-
-      getAssistantAfter(userMessage) {
-        const ordered = getRoleNodes();
-        const startIndex = ordered.indexOf(userMessage);
-
-        if (startIndex === -1) {
-          return undefined;
-        }
-
-        for (let index = startIndex + 1; index < ordered.length; index += 1) {
-          const candidate = ordered[index];
-          if (candidate.getAttribute("data-message-author-role") === "assistant") {
-            return candidate;
-          }
-
-          if (candidate.getAttribute("data-message-author-role") === "user") {
-            return undefined;
-          }
-        }
-
-        return undefined;
+      getOrderedMessages() {
+        return getRoleNodes();
       }
     };
   }
 
   function extractQuestions(adapter) {
     const effectiveAdapter = adapter || createChatGPTWebAdapter();
-    const userMessages = effectiveAdapter.getUserMessages();
+    const orderedMessages = typeof effectiveAdapter.getOrderedMessages === "function"
+      ? effectiveAdapter.getOrderedMessages()
+      : getRoleNodes();
     const items = [];
 
-    userMessages.forEach((userRoleEl, index) => {
-      const text = getMessageText(userRoleEl);
-      if (!text) {
+    orderedMessages.forEach((roleEl) => {
+      const role = roleEl.getAttribute("data-message-author-role");
+
+      if (role === "user") {
+        const text = getMessageText(roleEl);
+        if (!text) {
+          return;
+        }
+
+        const messageEl = getDisplayBlock(roleEl);
+        const questionIndex = items.length;
+        const id = getOrAssignAnchorId(messageEl, questionIndex);
+
+        items.push({
+          id,
+          index: questionIndex + 1,
+          text,
+          shortTitle: buildShortTitle(text),
+          messageEl,
+          answerEl: undefined
+        });
         return;
       }
 
-      const messageEl = getDisplayBlock(userRoleEl);
-      const assistantRoleEl = effectiveAdapter.getAssistantAfter(userRoleEl);
-      const answerEl = assistantRoleEl ? getDisplayBlock(assistantRoleEl) : undefined;
-      const id = getOrAssignAnchorId(messageEl, index);
-
-      items.push({
-        id,
-        index: index + 1,
-        text,
-        shortTitle: buildShortTitle(text),
-        messageEl,
-        answerEl
-      });
+      if (role === "assistant" && items.length) {
+        const lastQuestion = items[items.length - 1];
+        if (!lastQuestion.answerEl) {
+          lastQuestion.answerEl = getDisplayBlock(roleEl);
+        }
+      }
     });
 
     return items;
   }
 
   function getObservationRoot() {
-    return document.body;
+    const firstRoleNode = document.querySelector(ROLE_SELECTOR);
+    if (firstRoleNode instanceof HTMLElement) {
+      return firstRoleNode.closest("main") ||
+        firstRoleNode.closest("[role='main']") ||
+        document.body;
+    }
+
+    return document.querySelector("main") ||
+      document.querySelector("[role='main']") ||
+      document.body;
   }
 
   root.extractor = {

@@ -16,7 +16,7 @@ A Chrome Manifest V3 extension that adds a floating right-side question navigato
 1. Open `chrome://extensions`
 2. Enable `Developer mode`
 3. Click `Load unpacked`
-4. Select this folder: `/Users/edison/chatgpt/chat_index`
+4. Select this folder: `/Users/edison/chatgpt/chat_map`
 
 ## Project Structure
 
