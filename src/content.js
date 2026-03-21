@@ -26,13 +26,83 @@
   let adapter = null;
   let mutationObserver = null;
   let observationRoot = null;
-  let visibilityTracker = null;
   let virtualizer = null;
-  let resumeSyncTimerId = null;
   let syncScheduled = false;
 
   function getQuestionById(questionId) {
     return appState.questions.find((item) => item.id === questionId) || null;
+  }
+
+  function getQuestionIndex(questionId) {
+    return appState.questions.findIndex((item) => item.id === questionId);
+  }
+
+  function getQuestionAnchorElement(question) {
+    if (!question) {
+      return null;
+    }
+
+    if (question.answerEl instanceof HTMLElement) {
+      return question.answerEl;
+    }
+
+    if (question.messageEl instanceof HTMLElement) {
+      return question.messageEl;
+    }
+
+    return null;
+  }
+
+  function getAdjacentQuestion(direction) {
+    const currentIndex = getQuestionIndex(appState.activeQuestionId);
+    if (currentIndex === -1) {
+      return null;
+    }
+
+    const nextIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (nextIndex < 0 || nextIndex >= appState.questions.length) {
+      return null;
+    }
+
+    return appState.questions[nextIndex];
+  }
+
+  function scheduleQuestionPositionReset(questionId) {
+    if (!questionId || !navigator) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      const question = getQuestionById(questionId);
+      const anchorEl = getQuestionAnchorElement(question);
+      if (!(anchorEl instanceof HTMLElement)) {
+        return;
+      }
+
+      const container = navigator.findScrollContainer(anchorEl);
+      navigator.scrollElementIntoViewWithOffset(anchorEl, container, navigator.TOP_OFFSET, "auto");
+    });
+  }
+
+  function showQuestionById(questionId, options) {
+    const config = options || {};
+    const question = getQuestionById(questionId);
+    if (!question) {
+      return false;
+    }
+
+    appState.activeQuestionId = questionId;
+    if (panel) {
+      panel.setActiveQuestion(questionId);
+    }
+    if (virtualizer) {
+      virtualizer.showQuestion(questionId);
+    }
+    if (config.resetPosition !== false) {
+      scheduleQuestionPositionReset(questionId);
+    }
+
+    return true;
   }
 
   function renderPanel() {
@@ -69,34 +139,6 @@
     return (Array.isArray(items) ? items : []).map((item) => {
       return [item.id, item.index, item.shortTitle].join(":");
     }).join("|");
-  }
-
-  function refreshVisibilityTracking() {
-    if (!visibilityTracker) {
-      return;
-    }
-
-    const observableQuestions = virtualizer
-      ? virtualizer.getObservableQuestions(appState.questions)
-      : appState.questions;
-    visibilityTracker.observeQuestions(observableQuestions);
-  }
-
-  function scheduleResumeSync(delayMs) {
-    window.clearTimeout(resumeSyncTimerId);
-    resumeSyncTimerId = window.setTimeout(() => {
-      resumeSyncTimerId = null;
-      scheduleSync();
-    }, Math.max(0, Number(delayMs) || 0));
-  }
-
-  function suspendVirtualization(durationMs) {
-    if (!virtualizer) {
-      return;
-    }
-
-    const resumeAt = virtualizer.suspend(durationMs);
-    scheduleResumeSync(Math.max(0, resumeAt - Date.now()) + 32);
   }
 
   function ensureMutationObserver(currentAdapter) {
@@ -147,6 +189,7 @@
 
   function syncQuestions() {
     syncScheduled = false;
+    const previousActiveQuestionId = appState.activeQuestionId;
 
     if (window.location.href !== appState.currentUrl) {
       if (virtualizer) {
@@ -165,11 +208,14 @@
       if (virtualizer) {
         virtualizer.reset();
       }
-      refreshVisibilityTracking();
       destroyPanel();
       return;
     }
 
+    const previousQuestionCount = appState.questions.length;
+    const previousLatestQuestionId = previousQuestionCount
+      ? appState.questions[previousQuestionCount - 1].id
+      : null;
     const extractedQuestions = extractor.extractQuestions(adapter);
     const nextQuestions = virtualizer
       ? virtualizer.reconcileQuestions(extractedQuestions)
@@ -180,16 +226,25 @@
     ensurePanel();
     appState.questions = nextQuestions;
     appState.questionsSignature = nextSignature;
+    const latestQuestionId = appState.questions.length
+      ? appState.questions[appState.questions.length - 1].id
+      : null;
+
+    if (!appState.activeQuestionId) {
+      appState.activeQuestionId = latestQuestionId;
+    } else if (!getQuestionById(appState.activeQuestionId)) {
+      appState.activeQuestionId = latestQuestionId;
+    } else if (
+      latestQuestionId &&
+      (appState.questions.length > previousQuestionCount || latestQuestionId !== previousLatestQuestionId)
+    ) {
+      appState.activeQuestionId = latestQuestionId;
+    }
+
     if (virtualizer) {
       virtualizer.applyQuestions(appState.questions);
-      if (appState.activeQuestionId && !virtualizer.isSuspended()) {
-        virtualizer.setActiveQuestion(appState.activeQuestionId);
-      }
-    }
-    if (appState.activeQuestionId && !getQuestionById(appState.activeQuestionId)) {
-      appState.activeQuestionId = appState.questions.length ? appState.questions[0].id : null;
-      if (virtualizer && appState.activeQuestionId && !virtualizer.isSuspended()) {
-        virtualizer.setActiveQuestion(appState.activeQuestionId);
+      if (appState.activeQuestionId) {
+        virtualizer.showQuestion(appState.activeQuestionId);
       }
     }
 
@@ -199,7 +254,9 @@
       panel.setActiveQuestion(appState.activeQuestionId);
     }
 
-    refreshVisibilityTracking();
+    if (appState.activeQuestionId && appState.activeQuestionId !== previousActiveQuestionId) {
+      scheduleQuestionPositionReset(appState.activeQuestionId);
+    }
   }
 
   function scheduleSync() {
@@ -212,7 +269,6 @@
   }
 
   function onConversationMutation() {
-    suspendVirtualization(900);
     scheduleSync();
   }
 
@@ -222,81 +278,23 @@
   }
 
   function onSelectQuestion(questionId) {
-    const question = getQuestionById(questionId);
-    if (!question) {
-      return;
-    }
-
-    appState.activeQuestionId = questionId;
-    panel.setActiveQuestion(questionId);
-    if (virtualizer) {
-      virtualizer.ensureQuestionVisible(question);
-      refreshVisibilityTracking();
-    }
-
-    window.requestAnimationFrame(() => {
-      navigator.scrollToQuestion(question);
+    showQuestionById(questionId, {
+      resetPosition: true
     });
-  }
-
-  function onActiveQuestionChange(questionId) {
-    appState.activeQuestionId = questionId;
-    if (virtualizer && questionId) {
-      if (!virtualizer.isSuspended()) {
-        virtualizer.setActiveQuestion(questionId);
-        refreshVisibilityTracking();
-      }
-    }
-
-    if (panel) {
-      panel.setActiveQuestion(questionId);
-    }
   }
 
   async function bootstrap() {
     appState.panelState = await storage.loadPanelState();
 
-    visibilityTracker = observerModule.createQuestionVisibilityTracker({
-      onActiveChange: onActiveQuestionChange
-    });
     virtualizer = virtualizerModule.createConversationVirtualizer({
-      windowRadius: 3
+      getAdjacentQuestion,
+      onSelectQuestion
     });
 
     installHistoryChangeListener();
     ensureMutationObserver(extractor.resolveConversationAdapter());
-    installInteractionPauseListeners();
 
     syncQuestions();
-  }
-
-  function isConversationInputTarget(target) {
-    return target instanceof HTMLElement &&
-      target.matches("#prompt-textarea, textarea, [contenteditable='true'], [contenteditable='plaintext-only']");
-  }
-
-  function installInteractionPauseListeners() {
-    const pause = () => {
-      suspendVirtualization(1800);
-    };
-
-    document.addEventListener("focusin", (event) => {
-      if (isConversationInputTarget(event.target)) {
-        pause();
-      }
-    }, true);
-
-    document.addEventListener("keydown", (event) => {
-      if (isConversationInputTarget(event.target)) {
-        pause();
-      }
-    }, true);
-
-    document.addEventListener("input", (event) => {
-      if (isConversationInputTarget(event.target)) {
-        pause();
-      }
-    }, true);
   }
 
   if (document.readyState === "loading") {

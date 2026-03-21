@@ -47,6 +47,21 @@
     let dragState = null;
     let lastRenderSignature = "";
 
+    function updateCountText() {
+      if (!questionItems.length) {
+        countEl.textContent = "0 questions";
+        return;
+      }
+
+      const activeIndex = questionItems.findIndex((item) => item.id === activeQuestionId);
+      if (activeIndex === -1) {
+        countEl.textContent = questionItems.length + " question" + (questionItems.length === 1 ? "" : "s");
+        return;
+      }
+
+      countEl.textContent = "Q" + questionItems[activeIndex].index + " / " + questionItems.length;
+    }
+
     function buildQuestionsSignature(items) {
       return (Array.isArray(items) ? items : []).map((item) => {
         return [item.id, item.index, item.shortTitle].join(":");
@@ -118,12 +133,12 @@
 
       if (!questionItems.length) {
         emptyEl.hidden = false;
-        countEl.textContent = "0 questions";
+        updateCountText();
         return;
       }
 
       emptyEl.hidden = true;
-      countEl.textContent = questionItems.length + " question" + (questionItems.length === 1 ? "" : "s");
+      updateCountText();
 
       questionItems.forEach((item) => {
         const buttonEl = document.createElement("button");
@@ -157,6 +172,7 @@
       }
 
       activeQuestionId = nextActiveId;
+      updateCountText();
       const itemEls = listEl.querySelectorAll(".qnav-item");
       itemEls.forEach((itemEl) => {
         const isActive = activeQuestionId && itemEl.dataset.qnavQuestionId === activeQuestionId;
