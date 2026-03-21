@@ -2,7 +2,26 @@
   const root = window.__QNAV__ = window.__QNAV__ || {};
   const TOP_OFFSET = root.navigator ? root.navigator.TOP_OFFSET : 96;
   const MUTATION_DEBOUNCE_MS = 180;
-  const MESSAGE_SELECTOR = "[data-message-author-role], article, [data-testid^='conversation-turn-']";
+  const COLLAPSED_ATTR = root.virtualizer ? root.virtualizer.COLLAPSED_ATTR : "data-qnav-collapsed";
+  const MANAGED_ATTR = root.virtualizer ? root.virtualizer.MANAGED_ATTR : "data-qnav-managed";
+  const MANAGED_VALUE = root.virtualizer ? root.virtualizer.MANAGED_VALUE : "true";
+  const MESSAGE_SELECTOR = [
+    "[data-message-author-role]",
+    "article",
+    "[data-testid^='conversation-turn-']",
+    "user-query",
+    "user-query-content",
+    "model-response",
+    ".conversation-container",
+    ".model-response-container",
+    ".response-container"
+  ].join(", ");
+
+  function isManagedNode(node) {
+    return node instanceof Element &&
+      (node.getAttribute(MANAGED_ATTR) === MANAGED_VALUE ||
+      Boolean(node.closest("[" + MANAGED_ATTR + "='" + MANAGED_VALUE + "']")));
+  }
 
   function buildQuestionSignature(items) {
     return (Array.isArray(items) ? items : []).map((item) => item && item.id).filter(Boolean).join("|");
@@ -14,6 +33,12 @@
     }
 
     return element.matches(MESSAGE_SELECTOR) || Boolean(element.querySelector(MESSAGE_SELECTOR));
+  }
+
+  function isTrackableMessageElement(element) {
+    return element instanceof HTMLElement &&
+      element.isConnected &&
+      element.getAttribute(COLLAPSED_ATTR) !== "true";
   }
 
   function createQuestionVisibilityTracker(options) {
@@ -30,10 +55,18 @@
       }
 
       const threshold = TOP_OFFSET + 24;
-      let activeQuestion = questions[0];
+      let activeQuestion = null;
 
       for (let index = 0; index < questions.length; index += 1) {
         const item = questions[index];
+        if (!item || !isTrackableMessageElement(item.messageEl)) {
+          continue;
+        }
+
+        if (!activeQuestion) {
+          activeQuestion = item;
+        }
+
         const rect = item.messageEl.getBoundingClientRect();
 
         if (rect.top <= threshold) {
@@ -97,7 +130,7 @@
       });
 
       questions.forEach((item) => {
-        if (item && item.messageEl instanceof HTMLElement) {
+        if (item && isTrackableMessageElement(item.messageEl)) {
           observer.observe(item.messageEl);
         }
       });
@@ -142,13 +175,17 @@
         return true;
       }
 
+      if (isManagedNode(targetNode)) {
+        return true;
+      }
+
       const changedNodes = Array.from(mutation.addedNodes).concat(Array.from(mutation.removedNodes));
       if (!changedNodes.length) {
         return false;
       }
 
       return changedNodes.every((node) => {
-        return node instanceof Node && rootEl.contains(node);
+        return (node instanceof Node && rootEl.contains(node)) || isManagedNode(node);
       });
     }
 
@@ -176,7 +213,7 @@
       window.clearTimeout(timeoutId);
       timeoutId = window.setTimeout(() => {
         timeoutId = null;
-        onChange();
+        onChange(mutations);
       }, MUTATION_DEBOUNCE_MS);
     });
 

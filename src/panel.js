@@ -23,7 +23,7 @@
       "  <div class='qnav-header'>",
       "    <div class='qnav-title-wrap'>",
       "      <div class='qnav-title'>Questions</div>",
-      "      <div class='qnav-subtitle'>Jump to your previous prompts</div>",
+      "      <div class='qnav-subtitle'>Jump to earlier prompts in this conversation</div>",
       "    </div>",
       "    <button class='qnav-toggle' type='button' aria-label='Collapse question navigator'></button>",
       "  </div>",
@@ -233,6 +233,18 @@
       emitStateChange();
     }
 
+    function destroy() {
+      dragState = null;
+      document.body.classList.remove("qnav-resizing");
+      toggleButtonEl.removeEventListener("click", onToggleClick);
+      collapsedTabEl.removeEventListener("click", onToggleClick);
+      listEl.removeEventListener("click", onListClick);
+      resizeHandleEl.removeEventListener("mousedown", onResizeStart);
+      window.removeEventListener("mousemove", onResizeMove);
+      window.removeEventListener("mouseup", onResizeEnd);
+      panelEl.remove();
+    }
+
     toggleButtonEl.addEventListener("click", onToggleClick);
     collapsedTabEl.addEventListener("click", onToggleClick);
     listEl.addEventListener("click", onListClick);
@@ -245,7 +257,8 @@
       setActiveQuestion,
       setCollapsed,
       setWidth,
-      getState
+      getState,
+      destroy
     };
   }
 

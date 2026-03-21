@@ -12,6 +12,7 @@
   const navigator = root.navigator;
   const panelModule = root.panel;
   const observerModule = root.observer;
+  const virtualizerModule = root.virtualizer;
 
   const appState = {
     panelState: storage ? storage.DEFAULT_PANEL_STATE : { collapsed: false, width: 320 },
@@ -26,6 +27,8 @@
   let mutationObserver = null;
   let observationRoot = null;
   let visibilityTracker = null;
+  let virtualizer = null;
+  let resumeSyncTimerId = null;
   let syncScheduled = false;
 
   function getQuestionById(questionId) {
@@ -41,6 +44,27 @@
     panel.setActiveQuestion(appState.activeQuestionId);
   }
 
+  function ensurePanel() {
+    if (panel) {
+      return;
+    }
+
+    panel = panelModule.createPanel({
+      state: appState.panelState,
+      onSelectQuestion,
+      onStateChange: persistPanelState
+    });
+  }
+
+  function destroyPanel() {
+    if (!panel) {
+      return;
+    }
+
+    panel.destroy();
+    panel = null;
+  }
+
   function buildQuestionsSignature(items) {
     return (Array.isArray(items) ? items : []).map((item) => {
       return [item.id, item.index, item.shortTitle].join(":");
@@ -52,11 +76,31 @@
       return;
     }
 
-    visibilityTracker.observeQuestions(appState.questions);
+    const observableQuestions = virtualizer
+      ? virtualizer.getObservableQuestions(appState.questions)
+      : appState.questions;
+    visibilityTracker.observeQuestions(observableQuestions);
   }
 
-  function ensureMutationObserver() {
-    const nextObservationRoot = extractor.getObservationRoot();
+  function scheduleResumeSync(delayMs) {
+    window.clearTimeout(resumeSyncTimerId);
+    resumeSyncTimerId = window.setTimeout(() => {
+      resumeSyncTimerId = null;
+      scheduleSync();
+    }, Math.max(0, Number(delayMs) || 0));
+  }
+
+  function suspendVirtualization(durationMs) {
+    if (!virtualizer) {
+      return;
+    }
+
+    const resumeAt = virtualizer.suspend(durationMs);
+    scheduleResumeSync(Math.max(0, resumeAt - Date.now()) + 32);
+  }
+
+  function ensureMutationObserver(currentAdapter) {
+    const nextObservationRoot = extractor.getObservationRoot(currentAdapter);
     if (mutationObserver && nextObservationRoot === observationRoot) {
       return;
     }
@@ -68,7 +112,7 @@
 
     mutationObserver = observerModule.createConversationMutationObserver(
       observationRoot,
-      scheduleSync
+      onConversationMutation
     );
   }
 
@@ -105,19 +149,48 @@
     syncScheduled = false;
 
     if (window.location.href !== appState.currentUrl) {
+      if (virtualizer) {
+        virtualizer.reset();
+      }
       appState.currentUrl = window.location.href;
     }
 
-    ensureMutationObserver();
+    adapter = extractor.resolveConversationAdapter();
+    ensureMutationObserver(adapter);
 
-    const nextQuestions = extractor.extractQuestions(adapter);
+    if (!extractor.isConversationSupported(adapter)) {
+      appState.questions = [];
+      appState.questionsSignature = "";
+      appState.activeQuestionId = null;
+      if (virtualizer) {
+        virtualizer.reset();
+      }
+      refreshVisibilityTracking();
+      destroyPanel();
+      return;
+    }
+
+    const extractedQuestions = extractor.extractQuestions(adapter);
+    const nextQuestions = virtualizer
+      ? virtualizer.reconcileQuestions(extractedQuestions)
+      : extractedQuestions;
     const nextSignature = buildQuestionsSignature(nextQuestions);
     const questionsChanged = nextSignature !== appState.questionsSignature;
 
+    ensurePanel();
     appState.questions = nextQuestions;
     appState.questionsSignature = nextSignature;
+    if (virtualizer) {
+      virtualizer.applyQuestions(appState.questions);
+      if (appState.activeQuestionId && !virtualizer.isSuspended()) {
+        virtualizer.setActiveQuestion(appState.activeQuestionId);
+      }
+    }
     if (appState.activeQuestionId && !getQuestionById(appState.activeQuestionId)) {
       appState.activeQuestionId = appState.questions.length ? appState.questions[0].id : null;
+      if (virtualizer && appState.activeQuestionId && !virtualizer.isSuspended()) {
+        virtualizer.setActiveQuestion(appState.activeQuestionId);
+      }
     }
 
     if (questionsChanged) {
@@ -138,6 +211,11 @@
     window.requestAnimationFrame(syncQuestions);
   }
 
+  function onConversationMutation() {
+    suspendVirtualization(900);
+    scheduleSync();
+  }
+
   async function persistPanelState(nextState) {
     const normalized = await storage.savePanelState(nextState);
     appState.panelState = normalized;
@@ -151,34 +229,74 @@
 
     appState.activeQuestionId = questionId;
     panel.setActiveQuestion(questionId);
-    navigator.scrollToQuestion(question);
+    if (virtualizer) {
+      virtualizer.ensureQuestionVisible(question);
+      refreshVisibilityTracking();
+    }
+
+    window.requestAnimationFrame(() => {
+      navigator.scrollToQuestion(question);
+    });
   }
 
   function onActiveQuestionChange(questionId) {
     appState.activeQuestionId = questionId;
+    if (virtualizer && questionId) {
+      if (!virtualizer.isSuspended()) {
+        virtualizer.setActiveQuestion(questionId);
+        refreshVisibilityTracking();
+      }
+    }
+
     if (panel) {
       panel.setActiveQuestion(questionId);
     }
   }
 
   async function bootstrap() {
-    adapter = extractor.createChatGPTWebAdapter();
     appState.panelState = await storage.loadPanelState();
-
-    panel = panelModule.createPanel({
-      state: appState.panelState,
-      onSelectQuestion,
-      onStateChange: persistPanelState
-    });
 
     visibilityTracker = observerModule.createQuestionVisibilityTracker({
       onActiveChange: onActiveQuestionChange
     });
+    virtualizer = virtualizerModule.createConversationVirtualizer({
+      windowRadius: 3
+    });
 
     installHistoryChangeListener();
-    ensureMutationObserver();
+    ensureMutationObserver(extractor.resolveConversationAdapter());
+    installInteractionPauseListeners();
 
     syncQuestions();
+  }
+
+  function isConversationInputTarget(target) {
+    return target instanceof HTMLElement &&
+      target.matches("#prompt-textarea, textarea, [contenteditable='true'], [contenteditable='plaintext-only']");
+  }
+
+  function installInteractionPauseListeners() {
+    const pause = () => {
+      suspendVirtualization(1800);
+    };
+
+    document.addEventListener("focusin", (event) => {
+      if (isConversationInputTarget(event.target)) {
+        pause();
+      }
+    }, true);
+
+    document.addEventListener("keydown", (event) => {
+      if (isConversationInputTarget(event.target)) {
+        pause();
+      }
+    }, true);
+
+    document.addEventListener("input", (event) => {
+      if (isConversationInputTarget(event.target)) {
+        pause();
+      }
+    }, true);
   }
 
   if (document.readyState === "loading") {

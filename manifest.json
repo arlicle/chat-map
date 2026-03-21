@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "ChatMap",
   "version": "0.1.0",
-  "description": "Show previous user questions in a right sidebar and jump to them in ChatGPT conversations.",
+  "description": "Show previous user questions in a right sidebar and jump to them in ChatGPT and Gemini conversations.",
   "permissions": [
     "storage"
   ],
@@ -10,7 +10,8 @@
     {
       "matches": [
         "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
+        "https://chat.openai.com/*",
+        "https://gemini.google.com/*"
       ],
       "js": [
         "src/storage.js",
@@ -18,6 +19,7 @@
         "src/navigator.js",
         "src/panel.js",
         "src/observer.js",
+        "src/virtualizer.js",
         "src/content.js"
       ],
       "css": [
