@@ -120,6 +120,7 @@
     let orderedQuestions = [];
     let questionsById = new Map();
     let currentQuestionId = null;
+    let favoriteControlEl = null;
     let prevControlEl = null;
     let nextControlEl = null;
 
@@ -130,10 +131,52 @@
     }
 
     function removeControls() {
+      removeControl(favoriteControlEl);
       removeControl(prevControlEl);
       removeControl(nextControlEl);
+      favoriteControlEl = null;
       prevControlEl = null;
       nextControlEl = null;
+    }
+
+    function createFavoriteControl(question) {
+      if (!question) {
+        return null;
+      }
+
+      const favoriteRecord = typeof config.getFavoriteRecord === "function"
+        ? config.getFavoriteRecord(question)
+        : null;
+      const buttonEl = document.createElement("button");
+      buttonEl.type = "button";
+      buttonEl.className = "qnav-favorite-toggle";
+      buttonEl.setAttribute(MANAGED_ATTR, MANAGED_VALUE);
+      buttonEl.dataset.favoriteState = favoriteRecord ? "active" : "idle";
+
+      const iconEl = document.createElement("span");
+      iconEl.className = "qnav-favorite-toggle-icon";
+      iconEl.textContent = favoriteRecord ? "★" : "☆";
+
+      const labelEl = document.createElement("span");
+      labelEl.className = "qnav-favorite-toggle-label";
+      labelEl.textContent = favoriteRecord ? "已收藏" : "收藏这一轮";
+
+      buttonEl.appendChild(iconEl);
+      buttonEl.appendChild(labelEl);
+
+      if (favoriteRecord && favoriteRecord.note) {
+        const noteEl = document.createElement("span");
+        noteEl.className = "qnav-favorite-toggle-note";
+        noteEl.textContent = truncateText(favoriteRecord.note, 80);
+        buttonEl.appendChild(noteEl);
+      }
+
+      buttonEl.addEventListener("click", () => {
+        if (typeof config.onFavoriteClick === "function") {
+          config.onFavoriteClick(question, favoriteRecord || null);
+        }
+      });
+      return buttonEl;
     }
 
     function createJumpControl(direction, question) {
@@ -212,6 +255,13 @@
       const nextQuestion = typeof config.getAdjacentQuestion === "function"
         ? config.getAdjacentQuestion("down")
         : orderedQuestions[currentIndex + 1];
+
+      if (firstElement.parentNode instanceof Node) {
+        favoriteControlEl = createFavoriteControl(currentQuestion);
+        if (favoriteControlEl) {
+          firstElement.parentNode.insertBefore(favoriteControlEl, firstElement);
+        }
+      }
 
       if (previousQuestion && firstElement.parentNode instanceof Node) {
         prevControlEl = createJumpControl("prev", previousQuestion);
