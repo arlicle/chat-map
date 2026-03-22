@@ -24,10 +24,22 @@
   }
 
   function hasChromeStorage() {
-    return typeof chrome !== "undefined" &&
-      chrome.storage &&
-      chrome.storage.local &&
-      typeof chrome.storage.local.get === "function";
+    try {
+      return typeof chrome !== "undefined" &&
+        chrome.storage &&
+        chrome.storage.local &&
+        typeof chrome.storage.local.get === "function";
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function isRuntimeLastErrorSet() {
+    try {
+      return Boolean(chrome.runtime && chrome.runtime.lastError);
+    } catch (error) {
+      return true;
+    }
   }
 
   function readLocalFallback() {
@@ -57,14 +69,18 @@
     }
 
     return new Promise((resolve) => {
-      chrome.storage.local.get([STORAGE_KEY], (result) => {
-        if (chrome.runtime && chrome.runtime.lastError) {
-          resolve(readLocalFallback());
-          return;
-        }
+      try {
+        chrome.storage.local.get([STORAGE_KEY], (result) => {
+          if (isRuntimeLastErrorSet()) {
+            resolve(readLocalFallback());
+            return;
+          }
 
-        resolve(normalizePanelState(result[STORAGE_KEY] || DEFAULT_PANEL_STATE));
-      });
+          resolve(normalizePanelState(result[STORAGE_KEY] || DEFAULT_PANEL_STATE));
+        });
+      } catch (error) {
+        resolve(readLocalFallback());
+      }
     });
   }
 
@@ -77,13 +93,18 @@
     }
 
     return new Promise((resolve) => {
-      chrome.storage.local.set({ [STORAGE_KEY]: nextState }, () => {
-        if (chrome.runtime && chrome.runtime.lastError) {
-          writeLocalFallback(nextState);
-        }
+      try {
+        chrome.storage.local.set({ [STORAGE_KEY]: nextState }, () => {
+          if (isRuntimeLastErrorSet()) {
+            writeLocalFallback(nextState);
+          }
 
+          resolve(nextState);
+        });
+      } catch (error) {
+        writeLocalFallback(nextState);
         resolve(nextState);
-      });
+      }
     });
   }
 

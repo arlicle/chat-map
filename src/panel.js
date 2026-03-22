@@ -27,6 +27,9 @@
       "    </div>",
       "    <button class='qnav-toggle' type='button' aria-label='Collapse question navigator'></button>",
       "  </div>",
+      "  <div class='qnav-search-wrap'>",
+      "    <input class='qnav-search-input' type='search' placeholder='Search questions and answers' aria-label='Search questions and answers' />",
+      "  </div>",
       "  <div class='qnav-count'></div>",
       "  <div class='qnav-empty'>No questions found in this conversation yet.</div>",
       "  <div class='qnav-list' role='listbox' aria-label='Conversation questions'></div>",
@@ -39,6 +42,7 @@
     const resizeHandleEl = panelEl.querySelector(".qnav-resize-handle");
     const toggleButtonEl = panelEl.querySelector(".qnav-toggle");
     const collapsedTabEl = panelEl.querySelector(".qnav-collapsed-tab");
+    const searchInputEl = panelEl.querySelector(".qnav-search-input");
     const listEl = panelEl.querySelector(".qnav-list");
     const emptyEl = panelEl.querySelector(".qnav-empty");
     const countEl = panelEl.querySelector(".qnav-count");
@@ -46,8 +50,17 @@
     let activeQuestionId = null;
     let dragState = null;
     let lastRenderSignature = "";
+    let currentSearchState = {
+      query: "",
+      results: []
+    };
 
     function updateCountText() {
+      if (currentSearchState.query) {
+        countEl.textContent = "找到 " + currentSearchState.results.length + " 条结果";
+        return;
+      }
+
       if (!questionItems.length) {
         countEl.textContent = "0 questions";
         return;
@@ -66,6 +79,23 @@
       return (Array.isArray(items) ? items : []).map((item) => {
         return [item.id, item.index, item.shortTitle].join(":");
       }).join("|");
+    }
+
+    function buildSearchSignature(searchState) {
+      const state = searchState || { query: "", results: [] };
+      return [
+        state.query || "",
+        (Array.isArray(state.results) ? state.results : []).map((item) => {
+          return [item.questionId, item.matchType, item.preview].join(":");
+        }).join("|")
+      ].join("::");
+    }
+
+    function buildRenderSignature(items, searchState) {
+      return [
+        buildQuestionsSignature(items),
+        buildSearchSignature(searchState)
+      ].join("||");
     }
 
     function isListItemFullyVisible(itemEl, containerEl) {
@@ -91,6 +121,16 @@
       }
     }
 
+    function emitLayoutChange() {
+      if (typeof config.onLayoutChange === "function") {
+        config.onLayoutChange({
+          collapsed: state.collapsed,
+          width: state.width,
+          renderedWidth: state.collapsed ? COLLAPSED_WIDTH : state.width
+        });
+      }
+    }
+
     function applyState() {
       panelEl.dataset.collapsed = state.collapsed ? "true" : "false";
       panelEl.style.width = (state.collapsed ? COLLAPSED_WIDTH : state.width) + "px";
@@ -99,6 +139,7 @@
         "aria-label",
         state.collapsed ? "Expand question navigator" : "Collapse question navigator"
       );
+      emitLayoutChange();
     }
 
     function setCollapsed(collapsed, shouldPersist) {
@@ -117,11 +158,89 @@
       }
     }
 
-    function renderQuestions(items, activeId) {
+    function createQuestionButton(item) {
+      const buttonEl = document.createElement("button");
+      buttonEl.type = "button";
+      buttonEl.className = "qnav-item";
+      buttonEl.dataset.qnavQuestionId = item.id;
+      buttonEl.setAttribute("role", "option");
+      buttonEl.setAttribute("aria-selected", item.id === activeQuestionId ? "true" : "false");
+      if (item.id === activeQuestionId) {
+        buttonEl.classList.add("is-active");
+      }
+
+      const indexEl = document.createElement("span");
+      indexEl.className = "qnav-item-index";
+      indexEl.textContent = "Q" + item.index;
+
+      const titleEl = document.createElement("span");
+      titleEl.className = "qnav-item-title";
+      titleEl.textContent = item.shortTitle;
+
+      buttonEl.appendChild(indexEl);
+      buttonEl.appendChild(titleEl);
+      return buttonEl;
+    }
+
+    function createSearchResultButton(result) {
+      const buttonEl = document.createElement("button");
+      buttonEl.type = "button";
+      buttonEl.className = "qnav-item qnav-search-result";
+      buttonEl.dataset.qnavQuestionId = result.questionId;
+      buttonEl.dataset.qnavMatchType = result.matchType;
+      buttonEl.setAttribute("role", "option");
+      buttonEl.setAttribute("aria-selected", result.questionId === activeQuestionId ? "true" : "false");
+      if (result.questionId === activeQuestionId) {
+        buttonEl.classList.add("is-active");
+      }
+
+      const indexEl = document.createElement("span");
+      indexEl.className = "qnav-item-index";
+      indexEl.textContent = "Q" + result.index;
+
+      const bodyEl = document.createElement("span");
+      bodyEl.className = "qnav-search-result-body";
+
+      const metaEl = document.createElement("span");
+      metaEl.className = "qnav-search-result-meta";
+
+      const typeEl = document.createElement("span");
+      typeEl.className = "qnav-search-result-type";
+      typeEl.textContent = result.matchType === "answer" ? "答案" : "问题";
+
+      const titleEl = document.createElement("span");
+      titleEl.className = "qnav-search-result-title";
+      titleEl.textContent = result.title;
+
+      metaEl.appendChild(typeEl);
+      metaEl.appendChild(titleEl);
+
+      const previewEl = document.createElement("span");
+      previewEl.className = "qnav-search-result-preview";
+      previewEl.textContent = result.preview;
+
+      bodyEl.appendChild(metaEl);
+      bodyEl.appendChild(previewEl);
+
+      buttonEl.appendChild(indexEl);
+      buttonEl.appendChild(bodyEl);
+      return buttonEl;
+    }
+
+    function renderQuestions(items, activeId, searchState) {
       const nextItems = Array.isArray(items) ? items.slice() : [];
-      const nextSignature = buildQuestionsSignature(nextItems);
+      const nextSearchState = {
+        query: searchState && searchState.query ? searchState.query : "",
+        results: Array.isArray(searchState && searchState.results) ? searchState.results.slice() : []
+      };
+      const nextSignature = buildRenderSignature(nextItems, nextSearchState);
       questionItems = nextItems;
       activeQuestionId = activeId || null;
+      currentSearchState = nextSearchState;
+
+      if (searchInputEl.value !== currentSearchState.query) {
+        searchInputEl.value = currentSearchState.query;
+      }
 
       if (nextSignature === lastRenderSignature) {
         setActiveQuestion(activeQuestionId);
@@ -131,37 +250,33 @@
       lastRenderSignature = nextSignature;
       listEl.textContent = "";
 
-      if (!questionItems.length) {
+      if (currentSearchState.query && !currentSearchState.results.length) {
         emptyEl.hidden = false;
+        emptyEl.textContent = "No matches found for \"" + currentSearchState.query + "\".";
+        updateCountText();
+        return;
+      }
+
+      if (!currentSearchState.query && !questionItems.length) {
+        emptyEl.hidden = false;
+        emptyEl.textContent = "No questions found in this conversation yet.";
         updateCountText();
         return;
       }
 
       emptyEl.hidden = true;
+      emptyEl.textContent = "No questions found in this conversation yet.";
       updateCountText();
 
+      if (currentSearchState.query) {
+        currentSearchState.results.forEach((result) => {
+          listEl.appendChild(createSearchResultButton(result));
+        });
+        return;
+      }
+
       questionItems.forEach((item) => {
-        const buttonEl = document.createElement("button");
-        buttonEl.type = "button";
-        buttonEl.className = "qnav-item";
-        buttonEl.dataset.qnavQuestionId = item.id;
-        buttonEl.setAttribute("role", "option");
-        buttonEl.setAttribute("aria-selected", item.id === activeQuestionId ? "true" : "false");
-        if (item.id === activeQuestionId) {
-          buttonEl.classList.add("is-active");
-        }
-
-        const indexEl = document.createElement("span");
-        indexEl.className = "qnav-item-index";
-        indexEl.textContent = "Q" + item.index;
-
-        const titleEl = document.createElement("span");
-        titleEl.className = "qnav-item-title";
-        titleEl.textContent = item.shortTitle;
-
-        buttonEl.appendChild(indexEl);
-        buttonEl.appendChild(titleEl);
-        listEl.appendChild(buttonEl);
+        listEl.appendChild(createQuestionButton(item));
       });
     }
 
@@ -209,7 +324,15 @@
         return;
       }
 
-      config.onSelectQuestion(questionId);
+      config.onSelectQuestion(questionId, target.dataset.qnavMatchType || "question");
+    }
+
+    function onSearchInput(event) {
+      if (typeof config.onSearchChange !== "function") {
+        return;
+      }
+
+      config.onSearchChange(event.target.value || "");
     }
 
     function onResizeStart(event) {
@@ -255,6 +378,7 @@
       toggleButtonEl.removeEventListener("click", onToggleClick);
       collapsedTabEl.removeEventListener("click", onToggleClick);
       listEl.removeEventListener("click", onListClick);
+      searchInputEl.removeEventListener("input", onSearchInput);
       resizeHandleEl.removeEventListener("mousedown", onResizeStart);
       window.removeEventListener("mousemove", onResizeMove);
       window.removeEventListener("mouseup", onResizeEnd);
@@ -264,6 +388,7 @@
     toggleButtonEl.addEventListener("click", onToggleClick);
     collapsedTabEl.addEventListener("click", onToggleClick);
     listEl.addEventListener("click", onListClick);
+    searchInputEl.addEventListener("input", onSearchInput);
     resizeHandleEl.addEventListener("mousedown", onResizeStart);
 
     applyState();

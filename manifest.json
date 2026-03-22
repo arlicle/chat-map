@@ -20,6 +20,7 @@
         "src/panel.js",
         "src/observer.js",
         "src/virtualizer.js",
+        "src/outline.js",
         "src/content.js"
       ],
       "css": [

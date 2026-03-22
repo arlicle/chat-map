@@ -10,6 +10,7 @@
   const storage = root.storage;
   const extractor = root.extractor;
   const navigator = root.navigator;
+  const outlineModule = root.outline;
   const panelModule = root.panel;
   const observerModule = root.observer;
   const virtualizerModule = root.virtualizer;
@@ -19,7 +20,9 @@
     questions: [],
     activeQuestionId: null,
     currentUrl: window.location.href,
-    questionsSignature: ""
+    questionsSignature: "",
+    searchQuery: "",
+    searchResults: []
   };
 
   let panel = null;
@@ -27,10 +30,303 @@
   let mutationObserver = null;
   let observationRoot = null;
   let virtualizer = null;
+  let outline = null;
   let syncScheduled = false;
+  let layoutRefreshFrame = null;
+
+  function applyResponsiveLayout(state) {
+    const panelState = storage && typeof storage.normalizePanelState === "function"
+      ? storage.normalizePanelState(state || appState.panelState)
+      : Object.assign({ collapsed: false, width: 320 }, state || appState.panelState || {});
+    const reservedWidth = panelState.collapsed ? 40 : panelState.width + 40;
+
+    appState.panelState = panelState;
+    document.documentElement.style.setProperty("--qnav-panel-reserve", reservedWidth + "px");
+    document.documentElement.dataset.qnavPanelCollapsed = panelState.collapsed ? "true" : "false";
+
+    if (layoutRefreshFrame !== null) {
+      window.cancelAnimationFrame(layoutRefreshFrame);
+    }
+
+    layoutRefreshFrame = window.requestAnimationFrame(() => {
+      layoutRefreshFrame = null;
+      if (outline && typeof outline.refreshLayout === "function") {
+        outline.refreshLayout();
+      }
+    });
+  }
+
+  function clearResponsiveLayout() {
+    document.documentElement.style.removeProperty("--qnav-panel-reserve");
+    delete document.documentElement.dataset.qnavPanelCollapsed;
+  }
 
   function getQuestionById(questionId) {
     return appState.questions.find((item) => item.id === questionId) || null;
+  }
+
+  function normalizeSearchText(text) {
+    return String(text || "").replace(/\s+/g, " ").trim();
+  }
+
+  function getHighlightTerms(query) {
+    const normalizedQuery = normalizeSearchText(query);
+    if (!normalizedQuery) {
+      return [];
+    }
+
+    const seen = new Set();
+    return normalizedQuery
+      .split(/\s+/)
+      .map((term) => term.trim())
+      .filter(Boolean)
+      .sort((left, right) => right.length - left.length)
+      .filter((term) => {
+        const key = term.toLowerCase();
+        if (seen.has(key)) {
+          return false;
+        }
+
+        seen.add(key);
+        return true;
+      });
+  }
+
+  function escapeForPreview(text) {
+    return normalizeSearchText(text);
+  }
+
+  function buildSearchPreview(text, query) {
+    const normalizedText = escapeForPreview(text);
+    const normalizedQuery = normalizeSearchText(query).toLowerCase();
+    if (!normalizedText || !normalizedQuery) {
+      return normalizedText;
+    }
+
+    const haystack = normalizedText.toLowerCase();
+    const matchIndex = haystack.indexOf(normalizedQuery);
+    if (matchIndex === -1) {
+      return normalizedText.slice(0, 72);
+    }
+
+    const previewStart = Math.max(0, matchIndex - 24);
+    const previewEnd = Math.min(normalizedText.length, matchIndex + normalizedQuery.length + 36);
+    let preview = normalizedText.slice(previewStart, previewEnd).trim();
+    if (previewStart > 0) {
+      preview = "…" + preview;
+    }
+    if (previewEnd < normalizedText.length) {
+      preview += "…";
+    }
+
+    return preview;
+  }
+
+  function buildSearchResults(query) {
+    const normalizedQuery = normalizeSearchText(query);
+    if (!normalizedQuery) {
+      return [];
+    }
+
+    const needle = normalizedQuery.toLowerCase();
+    const results = [];
+
+    appState.questions.forEach((question) => {
+      const questionText = normalizeSearchText(question.questionText || question.text);
+      const answerText = normalizeSearchText(question.answerText);
+
+      if (questionText && questionText.toLowerCase().indexOf(needle) !== -1) {
+        results.push({
+          questionId: question.id,
+          index: question.index,
+          matchType: "question",
+          title: question.shortTitle || truncateText(questionText, 72),
+          preview: buildSearchPreview(questionText, normalizedQuery)
+        });
+      }
+
+      if (answerText && answerText.toLowerCase().indexOf(needle) !== -1) {
+        results.push({
+          questionId: question.id,
+          index: question.index,
+          matchType: "answer",
+          title: question.shortTitle || truncateText(questionText, 72),
+          preview: buildSearchPreview(answerText, normalizedQuery)
+        });
+      }
+    });
+
+    return results;
+  }
+
+  function truncateText(text, limit) {
+    const normalized = normalizeSearchText(text);
+    if (!normalized) {
+      return "";
+    }
+
+    if (normalized.length <= limit) {
+      return normalized;
+    }
+
+    return normalized.slice(0, Math.max(0, limit - 1)).trimEnd() + "\u2026";
+  }
+
+  function flashElement(element) {
+    if (!(element instanceof HTMLElement)) {
+      return;
+    }
+
+    element.classList.add("qnav-flash");
+    window.clearTimeout(element.__qnavSearchFlashTimer);
+    element.__qnavSearchFlashTimer = window.setTimeout(() => {
+      element.classList.remove("qnav-flash");
+    }, 1500);
+  }
+
+  function clearSearchHighlights(scopeEl) {
+    const rootEl = scopeEl instanceof HTMLElement ? scopeEl : document;
+    rootEl.querySelectorAll(".qnav-search-hit").forEach((markEl) => {
+      if (!(markEl instanceof HTMLElement) || !markEl.parentNode) {
+        return;
+      }
+
+      const parentNode = markEl.parentNode;
+      markEl.replaceWith(document.createTextNode(markEl.textContent || ""));
+      if (typeof parentNode.normalize === "function") {
+        parentNode.normalize();
+      }
+    });
+  }
+
+  function collectHighlightTextNodes(element) {
+    if (!(element instanceof HTMLElement)) {
+      return [];
+    }
+
+    const walker = document.createTreeWalker(
+      element,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode(node) {
+          if (!node || !node.textContent || !node.textContent.trim()) {
+            return NodeFilter.FILTER_REJECT;
+          }
+
+          const parentEl = node.parentElement;
+          if (!parentEl) {
+            return NodeFilter.FILTER_REJECT;
+          }
+
+          if (parentEl.closest(".qnav-search-hit")) {
+            return NodeFilter.FILTER_REJECT;
+          }
+
+          const tagName = parentEl.tagName;
+          if (tagName === "SCRIPT" || tagName === "STYLE" || tagName === "NOSCRIPT" || tagName === "TEXTAREA") {
+            return NodeFilter.FILTER_REJECT;
+          }
+
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      }
+    );
+
+    const nodes = [];
+    let currentNode = walker.nextNode();
+    while (currentNode) {
+      nodes.push(currentNode);
+      currentNode = walker.nextNode();
+    }
+    return nodes;
+  }
+
+  function buildTextMatches(text, terms) {
+    const sourceText = String(text || "");
+    const lowerText = sourceText.toLowerCase();
+    const rawMatches = [];
+
+    terms.forEach((term) => {
+      const lowerTerm = term.toLowerCase();
+      let fromIndex = 0;
+
+      while (fromIndex < lowerText.length) {
+        const matchIndex = lowerText.indexOf(lowerTerm, fromIndex);
+        if (matchIndex === -1) {
+          break;
+        }
+
+        rawMatches.push({
+          start: matchIndex,
+          end: matchIndex + lowerTerm.length
+        });
+        fromIndex = matchIndex + lowerTerm.length;
+      }
+    });
+
+    rawMatches.sort((left, right) => {
+      if (left.start !== right.start) {
+        return left.start - right.start;
+      }
+
+      return right.end - left.end;
+    });
+
+    const mergedMatches = [];
+    rawMatches.forEach((match) => {
+      const previousMatch = mergedMatches[mergedMatches.length - 1];
+      if (previousMatch && match.start < previousMatch.end) {
+        return;
+      }
+
+      mergedMatches.push(match);
+    });
+
+    return mergedMatches;
+  }
+
+  function highlightSearchTerms(element, query) {
+    if (!(element instanceof HTMLElement)) {
+      return false;
+    }
+
+    const terms = getHighlightTerms(query);
+    if (!terms.length) {
+      return false;
+    }
+
+    let hasHighlight = false;
+    collectHighlightTextNodes(element).forEach((textNode) => {
+      const textContent = textNode.textContent || "";
+      const matches = buildTextMatches(textContent, terms);
+      if (!matches.length) {
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      let cursor = 0;
+
+      matches.forEach((match) => {
+        if (match.start > cursor) {
+          fragment.appendChild(document.createTextNode(textContent.slice(cursor, match.start)));
+        }
+
+        const markEl = document.createElement("mark");
+        markEl.className = "qnav-search-hit";
+        markEl.textContent = textContent.slice(match.start, match.end);
+        fragment.appendChild(markEl);
+        cursor = match.end;
+      });
+
+      if (cursor < textContent.length) {
+        fragment.appendChild(document.createTextNode(textContent.slice(cursor)));
+      }
+
+      textNode.parentNode.replaceChild(fragment, textNode);
+      hasHighlight = true;
+    });
+
+    return hasHighlight;
   }
 
   function getQuestionIndex(questionId) {
@@ -84,6 +380,20 @@
     });
   }
 
+  function syncAnswerOutline(question) {
+    if (!outline) {
+      return;
+    }
+
+    const answerEl = question && question.answerEl instanceof HTMLElement ? question.answerEl : null;
+    if (!answerEl) {
+      outline.reset();
+      return;
+    }
+
+    outline.applyAnswer(answerEl);
+  }
+
   function showQuestionById(questionId, options) {
     const config = options || {};
     const question = getQuestionById(questionId);
@@ -98,6 +408,7 @@
     if (virtualizer) {
       virtualizer.showQuestion(questionId);
     }
+    syncAnswerOutline(question);
     if (config.resetPosition !== false) {
       scheduleQuestionPositionReset(questionId);
     }
@@ -110,7 +421,10 @@
       return;
     }
 
-    panel.renderQuestions(appState.questions, appState.activeQuestionId);
+    panel.renderQuestions(appState.questions, appState.activeQuestionId, {
+      query: appState.searchQuery,
+      results: appState.searchResults
+    });
     panel.setActiveQuestion(appState.activeQuestionId);
   }
 
@@ -122,6 +436,8 @@
     panel = panelModule.createPanel({
       state: appState.panelState,
       onSelectQuestion,
+      onSearchChange,
+      onLayoutChange: applyResponsiveLayout,
       onStateChange: persistPanelState
     });
   }
@@ -133,6 +449,7 @@
 
     panel.destroy();
     panel = null;
+    clearResponsiveLayout();
   }
 
   function buildQuestionsSignature(items) {
@@ -195,6 +512,9 @@
       if (virtualizer) {
         virtualizer.reset();
       }
+      if (outline) {
+        outline.reset();
+      }
       appState.currentUrl = window.location.href;
     }
 
@@ -207,6 +527,9 @@
       appState.activeQuestionId = null;
       if (virtualizer) {
         virtualizer.reset();
+      }
+      if (outline) {
+        outline.reset();
       }
       destroyPanel();
       return;
@@ -247,11 +570,17 @@
         virtualizer.showQuestion(appState.activeQuestionId);
       }
     }
+    syncAnswerOutline(getQuestionById(appState.activeQuestionId));
+
+    appState.searchResults = buildSearchResults(appState.searchQuery);
 
     if (questionsChanged) {
       renderPanel();
     } else if (panel) {
-      panel.setActiveQuestion(appState.activeQuestionId);
+      panel.renderQuestions(appState.questions, appState.activeQuestionId, {
+        query: appState.searchQuery,
+        results: appState.searchResults
+      });
     }
 
     if (appState.activeQuestionId && appState.activeQuestionId !== previousActiveQuestionId) {
@@ -268,29 +597,71 @@
     window.requestAnimationFrame(syncQuestions);
   }
 
-  function onConversationMutation() {
+  function onConversationMutation(mutations) {
     scheduleSync();
   }
 
   async function persistPanelState(nextState) {
     const normalized = await storage.savePanelState(nextState);
-    appState.panelState = normalized;
+    applyResponsiveLayout(normalized);
   }
 
-  function onSelectQuestion(questionId) {
-    showQuestionById(questionId, {
+  function onSearchChange(query) {
+    appState.searchQuery = normalizeSearchText(query);
+    appState.searchResults = buildSearchResults(appState.searchQuery);
+    if (!appState.searchQuery) {
+      clearSearchHighlights();
+    }
+    renderPanel();
+  }
+
+  function onSelectQuestion(questionId, matchType) {
+    const didShow = showQuestionById(questionId, {
       resetPosition: true
+    });
+    if (!didShow) {
+      return;
+    }
+
+    const question = getQuestionById(questionId);
+    if (!question) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      const targetEl = matchType === "answer" && question.answerEl instanceof HTMLElement
+        ? question.answerEl
+        : question.messageEl instanceof HTMLElement
+          ? question.messageEl
+          : null;
+
+      clearSearchHighlights();
+      if (targetEl && appState.searchQuery && (matchType === "answer" || matchType === "question")) {
+        highlightSearchTerms(targetEl, appState.searchQuery);
+      }
+
+      if (matchType === "answer" && question.answerEl instanceof HTMLElement) {
+        flashElement(targetEl);
+        return;
+      }
+
+      if (question.messageEl instanceof HTMLElement) {
+        flashElement(targetEl);
+      }
     });
   }
 
   async function bootstrap() {
     appState.panelState = await storage.loadPanelState();
+    applyResponsiveLayout(appState.panelState);
 
     virtualizer = virtualizerModule.createConversationVirtualizer({
       getAdjacentQuestion,
       onSelectQuestion
     });
-
+    outline = outlineModule && typeof outlineModule.createAnswerOutline === "function"
+      ? outlineModule.createAnswerOutline()
+      : null;
     installHistoryChangeListener();
     ensureMutationObserver(extractor.resolveConversationAdapter());
 

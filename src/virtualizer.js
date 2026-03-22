@@ -17,6 +17,56 @@
     return elements;
   }
 
+  function getElementText(element) {
+    if (!(element instanceof HTMLElement)) {
+      return "";
+    }
+
+    return normalizeText(element.innerText || element.textContent || "");
+  }
+
+  function normalizeText(text) {
+    return String(text || "").replace(/\s+/g, " ").trim();
+  }
+
+  function buildSearchText(questionText, answerText) {
+    return [questionText, answerText].filter(Boolean).join("\n");
+  }
+
+  function hydrateQuestion(question, fallbackQuestion) {
+    if (!question && !fallbackQuestion) {
+      return null;
+    }
+
+    const source = question || fallbackQuestion;
+    const previous = fallbackQuestion || {};
+    const nextQuestionText = normalizeText(
+      source.questionText ||
+      source.text ||
+      previous.questionText ||
+      previous.text ||
+      ""
+    );
+    const nextAnswerText = normalizeText(
+      source.answerText ||
+      getElementText(source.answerEl) ||
+      previous.answerText ||
+      ""
+    );
+
+    return {
+      id: source.id || previous.id,
+      index: typeof previous.index === "number" ? previous.index : source.index,
+      text: source.text || previous.text || nextQuestionText,
+      questionText: nextQuestionText,
+      answerText: nextAnswerText,
+      searchText: buildSearchText(nextQuestionText, nextAnswerText),
+      shortTitle: source.shortTitle || previous.shortTitle,
+      messageEl: source.messageEl || previous.messageEl || null,
+      answerEl: source.answerEl || previous.answerEl || null
+    };
+  }
+
   function setCollapsedState(element, collapsed) {
     if (!(element instanceof HTMLElement)) {
       return;
@@ -28,25 +78,18 @@
 
   function mergeQuestionData(previousQuestion, nextQuestion) {
     if (!previousQuestion) {
-      return nextQuestion;
+      return hydrateQuestion(nextQuestion);
     }
 
     if (!nextQuestion) {
-      return previousQuestion;
+      return hydrateQuestion(previousQuestion);
     }
 
-    return {
-      id: previousQuestion.id,
-      index: previousQuestion.index,
-      text: nextQuestion.text || previousQuestion.text,
-      shortTitle: nextQuestion.shortTitle || previousQuestion.shortTitle,
-      messageEl: nextQuestion.messageEl || previousQuestion.messageEl,
-      answerEl: nextQuestion.answerEl || previousQuestion.answerEl
-    };
+    return hydrateQuestion(nextQuestion, previousQuestion);
   }
 
   function truncateText(text, limit) {
-    const normalized = String(text || "").replace(/\s+/g, " ").trim();
+    const normalized = normalizeText(text);
     if (!normalized) {
       return "";
     }
@@ -59,15 +102,11 @@
   }
 
   function buildQuestionPreview(question) {
-    return truncateText(question && question.text, 108);
+    return truncateText(question && (question.questionText || question.text), 108);
   }
 
   function buildAnswerPreview(question) {
-    const answerText = String(
-      question && question.answerEl instanceof HTMLElement
-        ? (question.answerEl.innerText || question.answerEl.textContent)
-        : ""
-    ).replace(/\s+/g, " ").trim();
+    const answerText = normalizeText(question && question.answerText);
 
     if (!answerText) {
       return "暂无回答";
@@ -196,11 +235,11 @@
     function reconcileQuestions(extractedQuestions) {
       const nextQuestions = Array.isArray(extractedQuestions) ? extractedQuestions : [];
       if (!orderedQuestions.length) {
-        return nextQuestions.slice();
+        return nextQuestions.map((question) => hydrateQuestion(question)).filter(Boolean);
       }
 
       if (!nextQuestions.length) {
-        return orderedQuestions.slice();
+        return orderedQuestions.map((question) => hydrateQuestion(question)).filter(Boolean);
       }
 
       const extractedById = new Map(nextQuestions.map((question) => [question.id, question]));
@@ -218,13 +257,17 @@
         }
 
         maxIndex += 1;
+        const hydratedQuestion = hydrateQuestion(question);
         mergedQuestions.push({
-          id: question.id,
+          id: hydratedQuestion.id,
           index: maxIndex,
-          text: question.text,
-          shortTitle: question.shortTitle,
-          messageEl: question.messageEl,
-          answerEl: question.answerEl
+          text: hydratedQuestion.text,
+          questionText: hydratedQuestion.questionText,
+          answerText: hydratedQuestion.answerText,
+          searchText: hydratedQuestion.searchText,
+          shortTitle: hydratedQuestion.shortTitle,
+          messageEl: hydratedQuestion.messageEl,
+          answerEl: hydratedQuestion.answerEl
         });
       });
 
@@ -248,7 +291,9 @@
     }
 
     function applyQuestions(questions) {
-      orderedQuestions = Array.isArray(questions) ? questions.slice() : [];
+      orderedQuestions = Array.isArray(questions)
+        ? questions.map((question) => Object.assign({}, question))
+        : [];
       questionsById = new Map(orderedQuestions.map((question) => [question.id, question]));
 
       if (!orderedQuestions.length) {
