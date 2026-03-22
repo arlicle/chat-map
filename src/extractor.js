@@ -14,6 +14,15 @@
     return String(text || "").replace(/\s+/g, " ").trim();
   }
 
+  function normalizeMultilineText(text) {
+    return String(text || "")
+      .replace(/\r\n?/g, "\n")
+      .replace(/\u00a0/g, " ")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
   function getChatGPTTurnNodes() {
     return Array.from(document.querySelectorAll(CHATGPT_TURN_SELECTOR)).filter((node) => {
       return node instanceof HTMLElement;
@@ -59,6 +68,22 @@
     }
 
     return normalizeText(element.innerText || element.textContent);
+  }
+
+  function getElementMultilineText(element) {
+    if (!(element instanceof HTMLElement)) {
+      return "";
+    }
+
+    return normalizeMultilineText(element.innerText || element.textContent);
+  }
+
+  function getElementHtml(element) {
+    if (!(element instanceof HTMLElement)) {
+      return "";
+    }
+
+    return String(element.innerHTML || "").trim();
   }
 
   function getFirstMatchingText(rootEl, selectors) {
@@ -273,7 +298,9 @@
           id,
           index: questionIndex + 1,
           text,
+          questionText: getElementMultilineText(messageEl || roleEl) || text,
           shortTitle: buildShortTitle(text),
+          questionHtml: getElementHtml(messageEl || roleEl),
           messageEl,
           answerEl: undefined
         });
@@ -283,9 +310,12 @@
       if (role === "assistant" && items.length) {
         const lastQuestion = items[items.length - 1];
         if (!lastQuestion.answerEl) {
-          lastQuestion.answerEl = typeof effectiveAdapter.getDisplayBlock === "function"
+          const answerEl = typeof effectiveAdapter.getDisplayBlock === "function"
             ? effectiveAdapter.getDisplayBlock(roleEl)
             : roleEl;
+          lastQuestion.answerEl = answerEl;
+          lastQuestion.answerText = getElementMultilineText(answerEl || roleEl);
+          lastQuestion.answerHtml = getElementHtml(answerEl || roleEl);
         }
       }
     });

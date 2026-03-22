@@ -85,8 +85,27 @@
     return fallbackValue;
   }
 
-  function normalizeTextValue(value) {
+  function normalizeInlineText(value) {
     return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
+  function normalizeMultilineText(value) {
+    const source = String(value || "").replace(/\r\n?/g, "\n");
+    if (!source.trim()) {
+      return "";
+    }
+
+    const normalizedLines = source.split("\n").map((line) => {
+      return line
+        .replace(/\u00a0/g, " ")
+        .replace(/\s+$/g, "");
+    });
+    const normalizedText = normalizedLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    return normalizedText;
+  }
+
+  function normalizeHtmlValue(value) {
+    return String(value || "").trim();
   }
 
   function normalizeFavoriteRecord(record, existingRecord) {
@@ -101,16 +120,18 @@
       favoriteId,
       conversationId: String(record && record.conversationId || previous.conversationId || ""),
       conversationUrl: String(record && record.conversationUrl || previous.conversationUrl || ""),
-      conversationTitle: normalizeTextValue(record && record.conversationTitle || previous.conversationTitle || ""),
+      conversationTitle: normalizeInlineText(record && record.conversationTitle || previous.conversationTitle || ""),
       questionId: String(record && record.questionId || previous.questionId || ""),
       questionIndex: typeof record?.questionIndex === "number"
         ? record.questionIndex
         : typeof previous.questionIndex === "number"
           ? previous.questionIndex
           : 0,
-      questionText: normalizeTextValue(record && record.questionText || previous.questionText || ""),
-      answerText: normalizeTextValue(record && record.answerText || previous.answerText || ""),
-      note: String(record && record.note || previous.note || "").trim(),
+      questionText: normalizeMultilineText(record && record.questionText || previous.questionText || ""),
+      answerText: normalizeMultilineText(record && record.answerText || previous.answerText || ""),
+      questionHtml: normalizeHtmlValue(record && record.questionHtml || previous.questionHtml || ""),
+      answerHtml: normalizeHtmlValue(record && record.answerHtml || previous.answerHtml || ""),
+      note: normalizeMultilineText(record && record.note || previous.note || ""),
       createdAt: normalizeTimestamp(record && record.createdAt, normalizeTimestamp(previous.createdAt, now)),
       updatedAt: normalizeTimestamp(record && record.updatedAt, now)
     };

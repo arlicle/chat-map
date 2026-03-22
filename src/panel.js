@@ -26,6 +26,9 @@
       "      <div class='qnav-subtitle'>Jump to earlier prompts in this conversation</div>",
       "    </div>",
       "    <div class='qnav-header-actions'>",
+      "      <button class='qnav-current-favorite-button' type='button' aria-label='Favorite current answer'>",
+      "        <span class='qnav-current-favorite-icon'>☆</span>",
+      "      </button>",
       "      <button class='qnav-favorites-button' type='button' aria-label='Open favorites'>",
       "        <span class='qnav-favorites-button-icon'>★</span>",
       "        <span class='qnav-favorites-button-count'>0</span>",
@@ -47,6 +50,8 @@
 
     const resizeHandleEl = panelEl.querySelector(".qnav-resize-handle");
     const toggleButtonEl = panelEl.querySelector(".qnav-toggle");
+    const currentFavoriteButtonEl = panelEl.querySelector(".qnav-current-favorite-button");
+    const currentFavoriteIconEl = panelEl.querySelector(".qnav-current-favorite-icon");
     const favoritesButtonEl = panelEl.querySelector(".qnav-favorites-button");
     const favoritesCountEl = panelEl.querySelector(".qnav-favorites-button-count");
     const collapsedTabEl = panelEl.querySelector(".qnav-collapsed-tab");
@@ -63,6 +68,7 @@
       results: []
     };
     let favoritesCount = 0;
+    let currentFavorite = null;
 
     function updateCountText() {
       if (currentSearchState.query) {
@@ -90,6 +96,16 @@
       favoritesButtonEl.title = favoritesCount
         ? "Open favorites (" + favoritesCount + ")"
         : "Open favorites";
+    }
+
+    function setCurrentFavorite(favorite) {
+      currentFavorite = favorite || null;
+      const isActive = Boolean(currentFavorite);
+      currentFavoriteButtonEl.dataset.active = isActive ? "true" : "false";
+      currentFavoriteIconEl.textContent = isActive ? "★" : "☆";
+      currentFavoriteButtonEl.title = isActive
+        ? (currentFavorite.note ? "已收藏: " + currentFavorite.note : "已收藏，点击编辑备注")
+        : "收藏当前问答";
     }
 
     function buildQuestionsSignature(items) {
@@ -336,6 +352,12 @@
       }
     }
 
+    function onCurrentFavoriteClick() {
+      if (typeof config.onToggleCurrentFavorite === "function") {
+        config.onToggleCurrentFavorite(currentFavorite);
+      }
+    }
+
     function onListClick(event) {
       const target = event.target.closest(".qnav-item");
       if (!target) {
@@ -399,6 +421,7 @@
       dragState = null;
       document.body.classList.remove("qnav-resizing");
       toggleButtonEl.removeEventListener("click", onToggleClick);
+      currentFavoriteButtonEl.removeEventListener("click", onCurrentFavoriteClick);
       favoritesButtonEl.removeEventListener("click", onFavoritesClick);
       collapsedTabEl.removeEventListener("click", onToggleClick);
       listEl.removeEventListener("click", onListClick);
@@ -410,6 +433,7 @@
     }
 
     toggleButtonEl.addEventListener("click", onToggleClick);
+    currentFavoriteButtonEl.addEventListener("click", onCurrentFavoriteClick);
     favoritesButtonEl.addEventListener("click", onFavoritesClick);
     collapsedTabEl.addEventListener("click", onToggleClick);
     listEl.addEventListener("click", onListClick);
@@ -421,6 +445,7 @@
     return {
       renderQuestions,
       setFavoritesCount,
+      setCurrentFavorite,
       setActiveQuestion,
       setCollapsed,
       setWidth,

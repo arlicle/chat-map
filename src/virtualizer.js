@@ -25,12 +25,37 @@
     return normalizeText(element.innerText || element.textContent || "");
   }
 
+  function getElementMultilineText(element) {
+    if (!(element instanceof HTMLElement)) {
+      return "";
+    }
+
+    return normalizeMultilineText(element.innerText || element.textContent || "");
+  }
+
   function normalizeText(text) {
     return String(text || "").replace(/\s+/g, " ").trim();
   }
 
+  function normalizeMultilineText(text) {
+    return String(text || "")
+      .replace(/\r\n?/g, "\n")
+      .replace(/\u00a0/g, " ")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
   function buildSearchText(questionText, answerText) {
-    return [questionText, answerText].filter(Boolean).join("\n");
+    return [normalizeText(questionText), normalizeText(answerText)].filter(Boolean).join("\n");
+  }
+
+  function getElementHtml(element) {
+    if (!(element instanceof HTMLElement)) {
+      return "";
+    }
+
+    return String(element.innerHTML || "").trim();
   }
 
   function hydrateQuestion(question, fallbackQuestion) {
@@ -40,26 +65,40 @@
 
     const source = question || fallbackQuestion;
     const previous = fallbackQuestion || {};
-    const nextQuestionText = normalizeText(
+    const nextQuestionText = normalizeMultilineText(
       source.questionText ||
       source.text ||
       previous.questionText ||
       previous.text ||
       ""
     );
-    const nextAnswerText = normalizeText(
+    const nextAnswerText = normalizeMultilineText(
       source.answerText ||
-      getElementText(source.answerEl) ||
+      getElementMultilineText(source.answerEl) ||
       previous.answerText ||
       ""
     );
+    const nextQuestionHtml = String(
+      source.questionHtml ||
+      getElementHtml(source.messageEl) ||
+      previous.questionHtml ||
+      ""
+    ).trim();
+    const nextAnswerHtml = String(
+      source.answerHtml ||
+      getElementHtml(source.answerEl) ||
+      previous.answerHtml ||
+      ""
+    ).trim();
 
     return {
       id: source.id || previous.id,
       index: typeof previous.index === "number" ? previous.index : source.index,
-      text: source.text || previous.text || nextQuestionText,
+      text: source.text || previous.text || normalizeText(nextQuestionText),
       questionText: nextQuestionText,
       answerText: nextAnswerText,
+      questionHtml: nextQuestionHtml,
+      answerHtml: nextAnswerHtml,
       searchText: buildSearchText(nextQuestionText, nextAnswerText),
       shortTitle: source.shortTitle || previous.shortTitle,
       messageEl: source.messageEl || previous.messageEl || null,
@@ -120,7 +159,6 @@
     let orderedQuestions = [];
     let questionsById = new Map();
     let currentQuestionId = null;
-    let favoriteControlEl = null;
     let prevControlEl = null;
     let nextControlEl = null;
 
@@ -131,52 +169,10 @@
     }
 
     function removeControls() {
-      removeControl(favoriteControlEl);
       removeControl(prevControlEl);
       removeControl(nextControlEl);
-      favoriteControlEl = null;
       prevControlEl = null;
       nextControlEl = null;
-    }
-
-    function createFavoriteControl(question) {
-      if (!question) {
-        return null;
-      }
-
-      const favoriteRecord = typeof config.getFavoriteRecord === "function"
-        ? config.getFavoriteRecord(question)
-        : null;
-      const buttonEl = document.createElement("button");
-      buttonEl.type = "button";
-      buttonEl.className = "qnav-favorite-toggle";
-      buttonEl.setAttribute(MANAGED_ATTR, MANAGED_VALUE);
-      buttonEl.dataset.favoriteState = favoriteRecord ? "active" : "idle";
-
-      const iconEl = document.createElement("span");
-      iconEl.className = "qnav-favorite-toggle-icon";
-      iconEl.textContent = favoriteRecord ? "★" : "☆";
-
-      const labelEl = document.createElement("span");
-      labelEl.className = "qnav-favorite-toggle-label";
-      labelEl.textContent = favoriteRecord ? "已收藏" : "收藏这一轮";
-
-      buttonEl.appendChild(iconEl);
-      buttonEl.appendChild(labelEl);
-
-      if (favoriteRecord && favoriteRecord.note) {
-        const noteEl = document.createElement("span");
-        noteEl.className = "qnav-favorite-toggle-note";
-        noteEl.textContent = truncateText(favoriteRecord.note, 80);
-        buttonEl.appendChild(noteEl);
-      }
-
-      buttonEl.addEventListener("click", () => {
-        if (typeof config.onFavoriteClick === "function") {
-          config.onFavoriteClick(question, favoriteRecord || null);
-        }
-      });
-      return buttonEl;
     }
 
     function createJumpControl(direction, question) {
@@ -256,13 +252,6 @@
         ? config.getAdjacentQuestion("down")
         : orderedQuestions[currentIndex + 1];
 
-      if (firstElement.parentNode instanceof Node) {
-        favoriteControlEl = createFavoriteControl(currentQuestion);
-        if (favoriteControlEl) {
-          firstElement.parentNode.insertBefore(favoriteControlEl, firstElement);
-        }
-      }
-
       if (previousQuestion && firstElement.parentNode instanceof Node) {
         prevControlEl = createJumpControl("prev", previousQuestion);
         if (prevControlEl) {
@@ -314,6 +303,8 @@
           text: hydratedQuestion.text,
           questionText: hydratedQuestion.questionText,
           answerText: hydratedQuestion.answerText,
+          questionHtml: hydratedQuestion.questionHtml,
+          answerHtml: hydratedQuestion.answerHtml,
           searchText: hydratedQuestion.searchText,
           shortTitle: hydratedQuestion.shortTitle,
           messageEl: hydratedQuestion.messageEl,

@@ -96,6 +96,68 @@
       .trim() || title;
   }
 
+  function normalizeSnapshotText(text) {
+    return String(text || "")
+      .replace(/\r\n?/g, "\n")
+      .replace(/\u00a0/g, " ")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  function stripSpeakerPrefix(text) {
+    return String(text || "")
+      .replace(/^\s*(?:你说|你|ChatGPT说|ChatGPT 说|ChatGPT|Gemini说|Gemini 说|Gemini)\s*[:：]\s*/i, "")
+      .trimStart();
+  }
+
+  function stripSpeakerMarkers(containerEl) {
+    if (!(containerEl instanceof HTMLElement)) {
+      return;
+    }
+
+    containerEl.querySelectorAll(
+      ".sr-only, [class*='sr-only'], .visually-hidden, [class*='visually-hidden'], [class*='screen-reader']"
+    ).forEach((node) => {
+      node.remove();
+    });
+  }
+
+  function extractFavoriteSnapshotHtml(element) {
+    if (!(element instanceof HTMLElement)) {
+      return "";
+    }
+
+    const clone = element.cloneNode(true);
+    if (!(clone instanceof HTMLElement)) {
+      return "";
+    }
+
+    stripSpeakerMarkers(clone);
+
+    clone.querySelectorAll("[data-qnav-managed='true']").forEach((managedEl) => {
+      managedEl.remove();
+    });
+
+    clone.querySelectorAll("button, textarea, input, select").forEach((controlEl) => {
+      controlEl.remove();
+    });
+
+    return String(clone.innerHTML || "").trim();
+  }
+
+  function extractFavoriteSnapshotText(element, fallbackText) {
+    if (element instanceof HTMLElement) {
+      const sourceText = element.innerText || element.textContent || "";
+      const normalized = stripSpeakerPrefix(normalizeSnapshotText(sourceText));
+      if (normalized) {
+        return normalized;
+      }
+    }
+
+    return stripSpeakerPrefix(normalizeSnapshotText(fallbackText || ""));
+  }
+
   function buildFavoriteId(question) {
     if (!question || !storage || typeof storage.makeFavoriteId !== "function") {
       return "";
@@ -121,6 +183,23 @@
       return null;
     }
 
+    const questionSnapshot = extractFavoriteSnapshotText(
+      question.messageEl,
+      question.questionText || question.text || ""
+    );
+    const answerSnapshot = extractFavoriteSnapshotText(
+      question.answerEl,
+      question.answerText || ""
+    );
+    const questionHtmlSnapshot = String(
+      question.questionHtml ||
+      extractFavoriteSnapshotHtml(question.messageEl)
+    ).trim();
+    const answerHtmlSnapshot = String(
+      question.answerHtml ||
+      extractFavoriteSnapshotHtml(question.answerEl)
+    ).trim();
+
     return {
       favoriteId: buildFavoriteId(question),
       conversationId: getConversationId(appState.currentUrl),
@@ -128,8 +207,10 @@
       conversationTitle: getConversationTitle(),
       questionId: question.id,
       questionIndex: question.index,
-      questionText: question.questionText || question.text || "",
-      answerText: question.answerText || "",
+      questionText: questionSnapshot,
+      answerText: answerSnapshot,
+      questionHtml: questionHtmlSnapshot,
+      answerHtml: answerHtmlSnapshot,
       note: String(note || "").trim(),
       createdAt: existingFavorite ? existingFavorite.createdAt : Date.now(),
       updatedAt: Date.now()
@@ -139,6 +220,9 @@
   function refreshFavoriteUI() {
     if (panel && typeof panel.setFavoritesCount === "function") {
       panel.setFavoritesCount(appState.favorites.length);
+    }
+    if (panel && typeof panel.setCurrentFavorite === "function") {
+      panel.setCurrentFavorite(getFavoriteRecord(getQuestionById(appState.activeQuestionId)));
     }
 
     if (virtualizer && appState.activeQuestionId) {
@@ -639,6 +723,9 @@
     appState.activeQuestionId = questionId;
     if (panel) {
       panel.setActiveQuestion(questionId);
+      if (typeof panel.setCurrentFavorite === "function") {
+        panel.setCurrentFavorite(getFavoriteRecord(question));
+      }
     }
     if (virtualizer) {
       virtualizer.showQuestion(questionId);
@@ -659,6 +746,9 @@
     if (typeof panel.setFavoritesCount === "function") {
       panel.setFavoritesCount(appState.favorites.length);
     }
+    if (typeof panel.setCurrentFavorite === "function") {
+      panel.setCurrentFavorite(getFavoriteRecord(getQuestionById(appState.activeQuestionId)));
+    }
     panel.renderQuestions(appState.questions, appState.activeQuestionId, {
       query: appState.searchQuery,
       results: appState.searchResults
@@ -674,6 +764,14 @@
     panel = panelModule.createPanel({
       state: appState.panelState,
       onOpenFavorites: openFavoritesPage,
+      onToggleCurrentFavorite: () => {
+        const activeQuestion = getQuestionById(appState.activeQuestionId);
+        if (!activeQuestion) {
+          return;
+        }
+
+        openFavoriteDialog(activeQuestion, getFavoriteRecord(activeQuestion));
+      },
       onSelectQuestion,
       onSearchChange,
       onLayoutChange: applyResponsiveLayout,
@@ -924,8 +1022,6 @@
 
     virtualizer = virtualizerModule.createConversationVirtualizer({
       getAdjacentQuestion,
-      getFavoriteRecord,
-      onFavoriteClick: openFavoriteDialog,
       onSelectQuestion
     });
     outline = outlineModule && typeof outlineModule.createAnswerOutline === "function"
