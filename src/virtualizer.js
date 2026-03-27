@@ -128,7 +128,9 @@
       return;
     }
 
-    element.hidden = Boolean(collapsed);
+    // Use inline style instead of hidden attribute for better compatibility
+    // with custom elements like <user-query> and <model-response> in Gemini
+    element.style.display = collapsed ? "none" : "";
     element.setAttribute(COLLAPSED_ATTR, collapsed ? "true" : "false");
   }
 

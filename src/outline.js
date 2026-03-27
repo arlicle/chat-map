@@ -37,10 +37,6 @@
       return false;
     }
 
-    if (element.hidden) {
-      return false;
-    }
-
     const style = window.getComputedStyle(element);
     if (style.display === "none" || style.visibility === "hidden") {
       return false;
@@ -48,10 +44,15 @@
 
     // Check if heading is inside a virtualizer-managed collapsed element
     // In that case, getClientRects() returns 0 but the heading is still valid
-    const collapsedParent = element.closest("[data-qnav-collapsed]");
+    const collapsedParent = element.closest("[data-qnav-collapsed='false']");
     if (collapsedParent) {
-      // Heading is inside a managed element, trust the content
+      // Heading is inside a visible managed element, trust the content
       return true;
+    }
+
+    // Check if heading is inside a collapsed element
+    if (element.closest("[data-qnav-collapsed='true']")) {
+      return false;
     }
 
     return element.getClientRects().length > 0;
