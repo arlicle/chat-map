@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ChatMap Favorites</title>
+  <title>ChatMap</title>
   <link rel="stylesheet" href="src/vendor/highlight-github.min.css" media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)" />
   <link rel="stylesheet" href="src/vendor/highlight-github-dark.min.css" media="(prefers-color-scheme: dark)" />
   <link rel="stylesheet" href="src/favorites-page.css" />
@@ -13,33 +13,38 @@
     <header class="favorites-header">
       <div class="favorites-header-copy">
         <p class="favorites-eyebrow">ChatMap</p>
-        <h1 class="favorites-title">收藏内容</h1>
-        <p class="favorites-subtitle">集中回看你标星保存的问答与备注。</p>
+        <h1 class="favorites-title"></h1>
+        <p class="favorites-subtitle"></p>
       </div>
       <div class="favorites-header-actions">
-        <label class="favorites-search">
-          <span class="favorites-search-label">搜索</span>
-          <input id="favorites-search-input" class="favorites-search-input" type="search" placeholder="搜索备注、问题、答案或会话标题" />
-        </label>
+        <div class="favorites-header-controls">
+          <label class="favorites-search">
+            <span id="favorites-search-label" class="favorites-search-label"></span>
+            <input id="favorites-search-input" class="favorites-search-input" type="search" />
+          </label>
+          <label class="favorites-language">
+            <span id="favorites-language-label" class="favorites-search-label"></span>
+            <select id="favorites-language-select" class="favorites-language-select"></select>
+          </label>
+        </div>
       </div>
     </header>
 
     <main class="favorites-layout">
       <aside class="favorites-sidebar">
-        <div id="favorites-count" class="favorites-count">0 条收藏</div>
-        <div id="favorites-empty" class="favorites-empty" hidden>还没有收藏内容。回到聊天页，点击星标即可保存。</div>
-        <div id="favorites-list" class="favorites-list" role="listbox" aria-label="收藏列表"></div>
+        <div id="favorites-count" class="favorites-count"></div>
+        <div id="favorites-empty" class="favorites-empty" hidden></div>
+        <div id="favorites-list" class="favorites-list" role="listbox"></div>
       </aside>
 
       <section id="favorites-detail" class="favorites-detail" aria-live="polite">
-        <div class="favorites-detail-empty">
-          选择左侧一条收藏，查看完整问答和备注。
-        </div>
+        <div class="favorites-detail-empty"></div>
       </section>
     </main>
   </div>
 
   <script src="src/storage.js"></script>
+  <script src="src/i18n.js"></script>
   <script src="src/vendor/highlight.min.js"></script>
   <script src="src/favorites-page.js"></script>
 </body>

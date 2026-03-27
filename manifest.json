@@ -33,6 +33,7 @@
       ],
       "js": [
         "src/storage.js",
+        "src/i18n.js",
         "src/extractor.js",
         "src/navigator.js",
         "src/panel.js",

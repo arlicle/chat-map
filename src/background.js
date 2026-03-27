@@ -1,5 +1,31 @@
 (function initBackground() {
   const FAVORITES_PAGE_PATH = "favorites.html";
+  const LANGUAGE_KEY = "qnav.language.v1";
+
+  function resolveLocale(preference) {
+    const normalized = String(preference || "auto").trim();
+    if (normalized === "zh-CN" || normalized === "en") {
+      return normalized;
+    }
+
+    return String(navigator.language || "en").toLowerCase().indexOf("zh") === 0 ? "zh-CN" : "en";
+  }
+
+  function getActionTitle(locale) {
+    return locale === "zh-CN" ? "打开 ChatMap 收藏页" : "Open ChatMap favorites";
+  }
+
+  async function syncActionTitle() {
+    try {
+      const result = await chrome.storage.local.get([LANGUAGE_KEY]);
+      const locale = resolveLocale(result[LANGUAGE_KEY]);
+      await chrome.action.setTitle({
+        title: getActionTitle(locale)
+      });
+    } catch (_error) {
+      // Ignore title sync failures.
+    }
+  }
 
   function getFavoritesPageUrl() {
     return chrome.runtime.getURL(FAVORITES_PAGE_PATH);
@@ -35,6 +61,20 @@
     });
   });
 
+  chrome.runtime.onInstalled.addListener(() => {
+    syncActionTitle();
+  });
+
+  chrome.runtime.onStartup.addListener(() => {
+    syncActionTitle();
+  });
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === "local" && changes[LANGUAGE_KEY]) {
+      syncActionTitle();
+    }
+  });
+
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message || message.type !== "OPEN_FAVORITES_PAGE") {
       return false;
@@ -55,4 +95,6 @@
 
     return true;
   });
+
+  syncActionTitle();
 }());

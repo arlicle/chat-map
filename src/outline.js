@@ -1,6 +1,7 @@
 (function initOutlineModule() {
   const root = window.__QNAV__ = window.__QNAV__ || {};
   const navigator = root.navigator;
+  const i18n = root.i18n;
   const MANAGED_ATTR = root.virtualizer ? root.virtualizer.MANAGED_ATTR : "data-qnav-managed";
   const MANAGED_VALUE = root.virtualizer ? root.virtualizer.MANAGED_VALUE : "true";
   const OUTLINE_ID_ATTR = "data-qnav-outline-id";
@@ -9,6 +10,10 @@
   const MIN_ANSWER_WIDTH = 840;
   const OUTLINE_BOTTOM_MARGIN = 16;
   const OUTLINE_EXTRA_HEIGHT = 250;
+
+  function t(key, params) {
+    return i18n && typeof i18n.t === "function" ? i18n.t(key, params) : key;
+  }
 
   function normalizeText(text) {
     return String(text || "").replace(/\s+/g, " ").trim();
@@ -61,6 +66,10 @@
     }, 1500);
   }
 
+  function isGeminiPlatform() {
+    return window.location.hostname === "gemini.google.com";
+  }
+
   function createAnswerOutline(options) {
     const config = options || {};
     let currentAnswerEl = null;
@@ -76,6 +85,7 @@
     let resizeFrameId = null;
     let compactMode = false;
     let compactExpanded = false;
+    const isGemini = isGeminiPlatform();
 
     function clearScrollListener() {
       if (scrollTarget && typeof scrollTarget.removeEventListener === "function") {
@@ -90,6 +100,9 @@
       compactExpanded = Boolean(expanded);
       if (wrapperEl) {
         wrapperEl.dataset.outlineExpanded = compactExpanded ? "true" : "false";
+      }
+      if (isGemini && railEl) {
+        railEl.dataset.outlineExpanded = compactExpanded ? "true" : "false";
       }
     }
 
@@ -180,13 +193,19 @@
     }
 
     function updateCompactMode() {
-      if (!wrapperEl || !currentAnswerEl) {
+      if (!currentAnswerEl) {
         return;
       }
 
       const answerWidth = currentAnswerEl.getBoundingClientRect().width;
       compactMode = window.innerWidth < COMPACT_BREAKPOINT || answerWidth < MIN_ANSWER_WIDTH;
-      wrapperEl.dataset.outlineCompact = compactMode ? "true" : "false";
+
+      if (wrapperEl) {
+        wrapperEl.dataset.outlineCompact = compactMode ? "true" : "false";
+      }
+      if (isGemini && railEl) {
+        railEl.dataset.outlineCompact = compactMode ? "true" : "false";
+      }
       if (!compactMode) {
         setCompactExpanded(false);
       }
@@ -240,7 +259,7 @@
     function renderOutlineChrome() {
       removeManagedNodes();
 
-      if (!wrapperEl || items.length < MIN_HEADINGS) {
+      if (items.length < MIN_HEADINGS) {
         return;
       }
 
@@ -250,16 +269,15 @@
 
       const railTitleEl = document.createElement("div");
       railTitleEl.className = "qnav-outline-title";
-      railTitleEl.textContent = "Outline";
+      railTitleEl.textContent = t("outline.title");
       railEl.appendChild(railTitleEl);
       railEl.appendChild(createListElement());
-      wrapperEl.insertBefore(railEl, currentAnswerEl);
 
       toggleButtonEl = document.createElement("button");
       toggleButtonEl.type = "button";
       toggleButtonEl.className = "qnav-outline-toggle";
       toggleButtonEl.setAttribute(MANAGED_ATTR, MANAGED_VALUE);
-      toggleButtonEl.textContent = "Outline";
+      toggleButtonEl.textContent = t("outline.title");
       toggleButtonEl.addEventListener("click", () => {
         setCompactExpanded(!compactExpanded);
       });
@@ -270,12 +288,26 @@
 
       const panelTitleEl = document.createElement("div");
       panelTitleEl.className = "qnav-outline-title";
-      panelTitleEl.textContent = "Outline";
+      panelTitleEl.textContent = t("outline.title");
       panelEl.appendChild(panelTitleEl);
       panelEl.appendChild(createListElement());
 
-      wrapperEl.insertBefore(toggleButtonEl, currentAnswerEl);
-      wrapperEl.insertBefore(panelEl, currentAnswerEl);
+      if (isGemini && currentAnswerEl) {
+        // Gemini: insert rail directly to body to avoid transform/filter issues
+        railEl.classList.add("qnav-outline-gemini");
+        toggleButtonEl.classList.add("qnav-outline-gemini");
+        panelEl.classList.add("qnav-outline-gemini");
+
+        document.body.appendChild(railEl);
+        document.body.appendChild(toggleButtonEl);
+        document.body.appendChild(panelEl);
+      } else if (wrapperEl) {
+        // Standard mode: insert into wrapper
+        wrapperEl.insertBefore(railEl, currentAnswerEl);
+        wrapperEl.insertBefore(toggleButtonEl, currentAnswerEl);
+        wrapperEl.insertBefore(panelEl, currentAnswerEl);
+      }
+
       updateCompactMode();
       updateRailHeight();
       applyActiveHeading();
@@ -309,11 +341,12 @@
     }
 
     function applyActiveHeading() {
-      if (!wrapperEl) {
+      const scopeEl = wrapperEl || railEl;
+      if (!scopeEl) {
         return;
       }
 
-      wrapperEl.querySelectorAll(".qnav-outline-item").forEach((itemEl) => {
+      scopeEl.querySelectorAll(".qnav-outline-item").forEach((itemEl) => {
         const isActive = itemEl.dataset.qnavOutlineId === activeHeadingId;
         itemEl.classList.toggle("is-active", isActive);
       });
@@ -405,6 +438,13 @@
       currentAnswerEl = nextAnswerEl;
       items = nextItems;
 
+      // Gemini: don't create wrapper, insert rail as sibling
+      if (isGemini) {
+        renderOutlineChrome();
+        bindScrollTracking();
+        return items.slice();
+      }
+
       if (!wrapperEl) {
         wrapperEl = document.createElement("div");
         wrapperEl.className = "qnav-outline-wrap";
@@ -424,13 +464,20 @@
         return items.slice();
       },
       refreshLayout() {
-        if (!wrapperEl) {
+        if (!wrapperEl && !railEl) {
           return;
         }
 
         scheduleLayoutRefresh();
       },
       reset,
+      setLanguage() {
+        if (!wrapperEl && !railEl) {
+          return;
+        }
+
+        renderOutlineChrome();
+      },
       setActiveHeading(headingId) {
         activeHeadingId = headingId || null;
         applyActiveHeading();

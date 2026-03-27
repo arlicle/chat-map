@@ -3,6 +3,11 @@
   const MANAGED_ATTR = "data-qnav-managed";
   const MANAGED_VALUE = "true";
   const COLLAPSED_ATTR = "data-qnav-collapsed";
+  const i18n = root.i18n;
+
+  function t(key, params) {
+    return i18n && typeof i18n.t === "function" ? i18n.t(key, params) : key;
+  }
 
   function getManagedElements(question) {
     const elements = [];
@@ -15,6 +20,18 @@
     }
 
     return elements;
+  }
+
+  function getPrimaryContentElement(question) {
+    if (question && question.answerEl instanceof HTMLElement) {
+      return question.answerEl;
+    }
+
+    if (question && question.messageEl instanceof HTMLElement) {
+      return question.messageEl;
+    }
+
+    return null;
   }
 
   function getElementText(element) {
@@ -148,7 +165,7 @@
     const answerText = normalizeText(question && question.answerText);
 
     if (!answerText) {
-      return "暂无回答";
+      return t("common.noAnswer");
     }
 
     return truncateText(answerText, 96);
@@ -175,6 +192,27 @@
       nextControlEl = null;
     }
 
+    function alignControlToContent(controlEl, anchorEl) {
+      if (!(controlEl instanceof HTMLElement) || !(anchorEl instanceof HTMLElement)) {
+        return;
+      }
+
+      const parentEl = controlEl.parentElement;
+      if (!(parentEl instanceof HTMLElement)) {
+        return;
+      }
+
+      const anchorRect = anchorEl.getBoundingClientRect();
+      const parentRect = parentEl.getBoundingClientRect();
+      const nextWidth = Math.max(280, Math.round(anchorRect.width));
+      const nextMarginLeft = Math.max(0, Math.round(anchorRect.left - parentRect.left));
+
+      controlEl.style.width = nextWidth + "px";
+      controlEl.style.maxWidth = nextWidth + "px";
+      controlEl.style.marginLeft = nextMarginLeft + "px";
+      controlEl.style.marginRight = "0";
+    }
+
     function createJumpControl(direction, question) {
       if (!question) {
         return null;
@@ -190,7 +228,7 @@
 
       const labelEl = document.createElement("span");
       labelEl.className = "qnav-reader-jump-label";
-      labelEl.textContent = direction === "prev" ? "上一题：" : "下一题：";
+      labelEl.textContent = direction === "prev" ? t("reader.prevLabel") : t("reader.nextLabel");
 
       const titleEl = document.createElement("span");
       titleEl.className = "qnav-reader-jump-heading";
@@ -205,7 +243,7 @@
 
       const previewLabelEl = document.createElement("span");
       previewLabelEl.className = "qnav-reader-jump-preview-label";
-      previewLabelEl.textContent = "答案：";
+      previewLabelEl.textContent = t("reader.answerLabel");
 
       const previewTextEl = document.createElement("span");
       previewTextEl.className = "qnav-reader-jump-preview-text";
@@ -245,6 +283,7 @@
 
       const firstElement = currentElements[0];
       const lastElement = currentElements[currentElements.length - 1];
+      const contentAnchorEl = getPrimaryContentElement(currentQuestion) || lastElement || firstElement;
       const previousQuestion = typeof config.getAdjacentQuestion === "function"
         ? config.getAdjacentQuestion("up")
         : orderedQuestions[currentIndex - 1];
@@ -256,6 +295,7 @@
         prevControlEl = createJumpControl("prev", previousQuestion);
         if (prevControlEl) {
           firstElement.parentNode.insertBefore(prevControlEl, firstElement);
+          alignControlToContent(prevControlEl, contentAnchorEl);
         }
       }
 
@@ -267,6 +307,7 @@
           } else {
             lastElement.parentNode.appendChild(nextControlEl);
           }
+          alignControlToContent(nextControlEl, contentAnchorEl);
         }
       }
     }
@@ -375,6 +416,10 @@
       currentQuestionId = null;
     }
 
+    function setLanguage() {
+      renderControls();
+    }
+
     return {
       applyQuestions,
       ensureQuestionVisible(question) {
@@ -399,6 +444,7 @@
       },
       reconcileQuestions,
       reset,
+      setLanguage,
       setActiveQuestion(questionId) {
         showQuestion(questionId);
         return true;

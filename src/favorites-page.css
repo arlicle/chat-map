@@ -31,15 +31,23 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   margin: 0;
   background: linear-gradient(180deg, var(--fav-bg), var(--fav-bg-soft));
   color: var(--fav-text);
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  overflow: hidden;
 }
 
 .favorites-app {
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
   padding: 20px 22px 24px;
 }
 
@@ -85,7 +93,19 @@ body {
   max-width: 100%;
 }
 
+.favorites-header-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  gap: 10px;
+}
+
 .favorites-search {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.favorites-language {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -100,7 +120,8 @@ body {
 }
 
 .favorites-search-input,
-.favorites-note-input {
+.favorites-note-input,
+.favorites-language-select {
   width: 100%;
   padding: 12px 14px;
   border: 1px solid var(--fav-border);
@@ -112,17 +133,21 @@ body {
 }
 
 .favorites-search-input:focus,
-.favorites-note-input:focus {
+.favorites-note-input:focus,
+.favorites-language-select:focus {
   outline: 2px solid color-mix(in srgb, var(--fav-accent) 24%, transparent);
   outline-offset: 1px;
 }
 
 .favorites-layout {
   display: grid;
+  flex: 1;
   grid-template-columns: 370px minmax(0, 1fr);
   gap: 16px;
   max-width: 1580px;
   margin: 0 auto;
+  min-height: 0;
+  width: 100%;
 }
 
 .favorites-sidebar,
@@ -136,7 +161,7 @@ body {
 .favorites-sidebar {
   display: flex;
   flex-direction: column;
-  min-height: calc(100vh - 134px);
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -228,7 +253,7 @@ body {
 }
 
 .favorites-detail {
-  min-height: calc(100vh - 134px);
+  min-height: 0;
   padding: 24px 26px;
   overflow: auto;
 }
@@ -436,6 +461,7 @@ body {
 .favorites-rendered pre {
   margin: 0.95em 0;
   padding: 0;
+  padding-left: 20px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -511,7 +537,9 @@ body {
 
 .favorites-code-pre {
   margin: 0;
-  padding: 8px 18px 18px 24px;
+  padding-top: 8px;
+  padding-right: 18px;
+  padding-bottom: 18px;
   overflow-x: auto;
 }
 
@@ -527,7 +555,7 @@ body {
 
 .favorites-code.hljs {
   background: transparent;
-  padding: 0;
+  padding: 0 !important;
 }
 
 .favorites-code-block,
@@ -621,7 +649,12 @@ body {
 }
 
 @media (max-width: 980px) {
+  body {
+    overflow: auto;
+  }
+
   .favorites-app {
+    height: auto;
     padding: 16px 14px 20px;
   }
 
@@ -636,7 +669,12 @@ body {
     flex-basis: auto;
   }
 
+  .favorites-header-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .favorites-layout {
+    flex: none;
     grid-template-columns: minmax(0, 1fr);
   }
 

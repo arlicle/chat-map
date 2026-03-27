@@ -3,6 +3,11 @@
   const MIN_WIDTH = root.storage ? root.storage.MIN_WIDTH : 260;
   const MAX_WIDTH = root.storage ? root.storage.MAX_WIDTH : 480;
   const COLLAPSED_WIDTH = 48;
+  const i18n = root.i18n;
+
+  function t(key, params) {
+    return i18n && typeof i18n.t === "function" ? i18n.t(key, params) : key;
+  }
 
   function createPanel(options) {
     const config = options || {};
@@ -11,43 +16,55 @@
       collapsed: Boolean(initialState.collapsed),
       width: initialState.width
     };
+    let languagePreference = String(
+      config.languagePreference ||
+      (i18n && typeof i18n.getLanguagePreference === "function" ? i18n.getLanguagePreference() : "auto")
+    );
 
     const panelEl = document.createElement("aside");
     panelEl.id = "qnav-root";
     panelEl.className = "qnav-root";
-    panelEl.setAttribute("aria-label", "Question Navigator");
+    panelEl.setAttribute("aria-label", t("panel.ariaLabel"));
 
     panelEl.innerHTML = [
       "<div class='qnav-resize-handle' aria-hidden='true'></div>",
       "<div class='qnav-shell'>",
       "  <div class='qnav-header'>",
       "    <div class='qnav-title-wrap'>",
-      "      <div class='qnav-title'>Questions</div>",
-      "      <div class='qnav-subtitle'>Jump to earlier prompts in this conversation</div>",
+      "      <div class='qnav-title'></div>",
+      "      <div class='qnav-subtitle'></div>",
       "    </div>",
       "    <div class='qnav-header-actions'>",
-      "      <button class='qnav-current-favorite-button' type='button' aria-label='Favorite current answer'>",
+      "      <button class='qnav-current-favorite-button' type='button'>",
       "        <span class='qnav-current-favorite-icon'>☆</span>",
       "      </button>",
-      "      <button class='qnav-favorites-button' type='button' aria-label='Open favorites'>",
+      "      <button class='qnav-favorites-button' type='button'>",
       "        <span class='qnav-favorites-button-icon'>★</span>",
       "        <span class='qnav-favorites-button-count'>0</span>",
       "      </button>",
-      "      <button class='qnav-toggle' type='button' aria-label='Collapse question navigator'></button>",
+      "      <button class='qnav-toggle' type='button'></button>",
       "    </div>",
       "  </div>",
       "  <div class='qnav-search-wrap'>",
-      "    <input class='qnav-search-input' type='search' placeholder='Search questions and answers' aria-label='Search questions and answers' />",
+      "    <div class='qnav-search-tools'>",
+      "      <label class='qnav-language-field'>",
+      "        <span class='qnav-language-label'></span>",
+      "        <select class='qnav-language-select'></select>",
+      "      </label>",
+      "    </div>",
+      "    <input class='qnav-search-input' type='search' />",
       "  </div>",
       "  <div class='qnav-count'></div>",
-      "  <div class='qnav-empty'>No questions found in this conversation yet.</div>",
-      "  <div class='qnav-list' role='listbox' aria-label='Conversation questions'></div>",
-      "  <button class='qnav-collapsed-tab' type='button' aria-label='Expand question navigator'>Q</button>",
+      "  <div class='qnav-empty'></div>",
+      "  <div class='qnav-list' role='listbox'></div>",
+      "  <button class='qnav-collapsed-tab' type='button'>Q</button>",
       "</div>"
     ].join("");
 
     document.body.appendChild(panelEl);
 
+    const titleEl = panelEl.querySelector(".qnav-title");
+    const subtitleEl = panelEl.querySelector(".qnav-subtitle");
     const resizeHandleEl = panelEl.querySelector(".qnav-resize-handle");
     const toggleButtonEl = panelEl.querySelector(".qnav-toggle");
     const currentFavoriteButtonEl = panelEl.querySelector(".qnav-current-favorite-button");
@@ -55,6 +72,8 @@
     const favoritesButtonEl = panelEl.querySelector(".qnav-favorites-button");
     const favoritesCountEl = panelEl.querySelector(".qnav-favorites-button-count");
     const collapsedTabEl = panelEl.querySelector(".qnav-collapsed-tab");
+    const languageLabelEl = panelEl.querySelector(".qnav-language-label");
+    const languageSelectEl = panelEl.querySelector(".qnav-language-select");
     const searchInputEl = panelEl.querySelector(".qnav-search-input");
     const listEl = panelEl.querySelector(".qnav-list");
     const emptyEl = panelEl.querySelector(".qnav-empty");
@@ -72,18 +91,18 @@
 
     function updateCountText() {
       if (currentSearchState.query) {
-        countEl.textContent = "找到 " + currentSearchState.results.length + " 条结果";
+        countEl.textContent = t("panel.foundResults", { count: currentSearchState.results.length });
         return;
       }
 
       if (!questionItems.length) {
-        countEl.textContent = "0 questions";
+        countEl.textContent = t("panel.zeroQuestions");
         return;
       }
 
       const activeIndex = questionItems.findIndex((item) => item.id === activeQuestionId);
       if (activeIndex === -1) {
-        countEl.textContent = questionItems.length + " question" + (questionItems.length === 1 ? "" : "s");
+        countEl.textContent = t("panel.questionCount", { count: questionItems.length });
         return;
       }
 
@@ -94,8 +113,8 @@
       favoritesCount = Math.max(0, Number(count) || 0);
       favoritesCountEl.textContent = String(favoritesCount);
       favoritesButtonEl.title = favoritesCount
-        ? "Open favorites (" + favoritesCount + ")"
-        : "Open favorites";
+        ? t("panel.openFavoritesCount", { count: favoritesCount })
+        : t("panel.openFavorites");
     }
 
     function setCurrentFavorite(favorite) {
@@ -104,8 +123,8 @@
       currentFavoriteButtonEl.dataset.active = isActive ? "true" : "false";
       currentFavoriteIconEl.textContent = isActive ? "★" : "☆";
       currentFavoriteButtonEl.title = isActive
-        ? (currentFavorite.note ? "已收藏: " + currentFavorite.note : "已收藏，点击编辑备注")
-        : "收藏当前问答";
+        ? (currentFavorite.note ? t("panel.favoriteCurrentSavedWithNote", { note: currentFavorite.note }) : t("panel.favoriteCurrentSaved"))
+        : t("panel.favoriteCurrent");
     }
 
     function buildQuestionsSignature(items) {
@@ -170,7 +189,7 @@
       toggleButtonEl.textContent = state.collapsed ? "\u2039" : "\u203a";
       toggleButtonEl.setAttribute(
         "aria-label",
-        state.collapsed ? "Expand question navigator" : "Collapse question navigator"
+        state.collapsed ? t("panel.expandAria") : t("panel.collapseAria")
       );
       emitLayoutChange();
     }
@@ -239,7 +258,7 @@
 
       const typeEl = document.createElement("span");
       typeEl.className = "qnav-search-result-type";
-      typeEl.textContent = result.matchType === "answer" ? "答案" : "问题";
+      typeEl.textContent = result.matchType === "answer" ? t("panel.resultTypeAnswer") : t("panel.resultTypeQuestion");
 
       const titleEl = document.createElement("span");
       titleEl.className = "qnav-search-result-title";
@@ -285,20 +304,20 @@
 
       if (currentSearchState.query && !currentSearchState.results.length) {
         emptyEl.hidden = false;
-        emptyEl.textContent = "No matches found for \"" + currentSearchState.query + "\".";
+        emptyEl.textContent = t("panel.noMatches", { query: currentSearchState.query });
         updateCountText();
         return;
       }
 
       if (!currentSearchState.query && !questionItems.length) {
         emptyEl.hidden = false;
-        emptyEl.textContent = "No questions found in this conversation yet.";
+        emptyEl.textContent = t("panel.noQuestions");
         updateCountText();
         return;
       }
 
       emptyEl.hidden = true;
-      emptyEl.textContent = "No questions found in this conversation yet.";
+      emptyEl.textContent = t("panel.noQuestions");
       updateCountText();
 
       if (currentSearchState.query) {
@@ -308,7 +327,7 @@
         return;
       }
 
-      questionItems.forEach((item) => {
+      questionItems.slice().reverse().forEach((item) => {
         listEl.appendChild(createQuestionButton(item));
       });
     }
@@ -380,6 +399,14 @@
       config.onSearchChange(event.target.value || "");
     }
 
+    function onLanguageChange(event) {
+      if (typeof config.onLanguageChange !== "function") {
+        return;
+      }
+
+      config.onLanguageChange(event.target.value || "auto");
+    }
+
     function onResizeStart(event) {
       if (state.collapsed || event.button !== 0) {
         return;
@@ -425,6 +452,7 @@
       favoritesButtonEl.removeEventListener("click", onFavoritesClick);
       collapsedTabEl.removeEventListener("click", onToggleClick);
       listEl.removeEventListener("click", onListClick);
+      languageSelectEl.removeEventListener("change", onLanguageChange);
       searchInputEl.removeEventListener("input", onSearchInput);
       resizeHandleEl.removeEventListener("mousedown", onResizeStart);
       window.removeEventListener("mousemove", onResizeMove);
@@ -432,14 +460,64 @@
       panelEl.remove();
     }
 
+    function updateLanguageOptions() {
+      const options = i18n && typeof i18n.getLanguageOptions === "function"
+        ? i18n.getLanguageOptions()
+        : [
+          { value: "auto", label: "Auto" },
+          { value: "zh-CN", label: "中文" },
+          { value: "en", label: "English" }
+        ];
+
+      languageSelectEl.textContent = "";
+      options.forEach((option) => {
+        const optionEl = document.createElement("option");
+        optionEl.value = option.value;
+        optionEl.textContent = option.label;
+        languageSelectEl.appendChild(optionEl);
+      });
+      languageSelectEl.value = languagePreference;
+    }
+
+    function refreshCopy() {
+      titleEl.textContent = t("panel.title");
+      subtitleEl.textContent = t("panel.subtitle");
+      panelEl.setAttribute("aria-label", t("panel.ariaLabel"));
+      currentFavoriteButtonEl.setAttribute("aria-label", t("panel.favoriteCurrentAria"));
+      favoritesButtonEl.setAttribute("aria-label", t("panel.openFavoritesAria"));
+      listEl.setAttribute("aria-label", t("panel.listAria"));
+      languageLabelEl.textContent = t("common.language");
+      languageSelectEl.setAttribute("aria-label", t("common.language"));
+      searchInputEl.placeholder = t("panel.searchPlaceholder");
+      searchInputEl.setAttribute("aria-label", t("panel.searchAria"));
+      toggleButtonEl.setAttribute(
+        "aria-label",
+        state.collapsed ? t("panel.expandAria") : t("panel.collapseAria")
+      );
+      collapsedTabEl.setAttribute("aria-label", t("panel.expandAria"));
+      updateLanguageOptions();
+      updateCountText();
+      setFavoritesCount(favoritesCount);
+      setCurrentFavorite(currentFavorite);
+    }
+
+    function setLanguagePreference(nextLanguagePreference) {
+      languagePreference = String(nextLanguagePreference || "auto");
+      refreshCopy();
+      lastRenderSignature = "";
+      renderQuestions(questionItems, activeQuestionId, currentSearchState);
+    }
+
     toggleButtonEl.addEventListener("click", onToggleClick);
     currentFavoriteButtonEl.addEventListener("click", onCurrentFavoriteClick);
     favoritesButtonEl.addEventListener("click", onFavoritesClick);
     collapsedTabEl.addEventListener("click", onToggleClick);
     listEl.addEventListener("click", onListClick);
+    languageSelectEl.addEventListener("change", onLanguageChange);
     searchInputEl.addEventListener("input", onSearchInput);
     resizeHandleEl.addEventListener("mousedown", onResizeStart);
 
+    refreshCopy();
     applyState();
 
     return {
@@ -447,6 +525,7 @@
       setFavoritesCount,
       setCurrentFavorite,
       setActiveQuestion,
+      setLanguagePreference,
       setCollapsed,
       setWidth,
       getState,

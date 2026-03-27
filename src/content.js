@@ -8,6 +8,7 @@
   root.appStarted = true;
 
   const storage = root.storage;
+  const i18n = root.i18n;
   const extractor = root.extractor;
   const navigator = root.navigator;
   const outlineModule = root.outline;
@@ -23,7 +24,8 @@
     favorites: [],
     questionsSignature: "",
     searchQuery: "",
-    searchResults: []
+    searchResults: [],
+    languagePreference: storage ? storage.DEFAULT_LANGUAGE_PREFERENCE : "auto"
   };
 
   let panel = null;
@@ -37,6 +39,10 @@
   let favoritesChangeListenerInstalled = false;
   let syncScheduled = false;
   let layoutRefreshFrame = null;
+
+  function t(key, params) {
+    return i18n && typeof i18n.t === "function" ? i18n.t(key, params) : key;
+  }
 
   function applyResponsiveLayout(state) {
     const panelState = storage && typeof storage.normalizePanelState === "function"
@@ -87,7 +93,7 @@
   function getConversationTitle() {
     const title = normalizeSearchText(document.title);
     if (!title) {
-      return "Untitled conversation";
+      return t("common.untitledConversation");
     }
 
     return title
@@ -105,9 +111,18 @@
       .trim();
   }
 
+  function escapeHtml(text) {
+    return String(text || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   function stripSpeakerPrefix(text) {
     return String(text || "")
-      .replace(/^\s*(?:你说|你|ChatGPT说|ChatGPT 说|ChatGPT|Gemini说|Gemini 说|Gemini)\s*[:：]\s*/i, "")
+      .replace(/^\s*(?:你说|你|you said|you|ChatGPT说|ChatGPT 说|ChatGPT said|ChatGPT|Gemini说|Gemini 说|Gemini said|Gemini)\s*[:：]\s*/i, "")
       .trimStart();
   }
 
@@ -590,25 +605,25 @@
     favoriteDialogEl.hidden = true;
     favoriteDialogEl.innerHTML = [
       "<div class='qnav-favorite-dialog-backdrop' data-action='backdrop'></div>",
-      "<div class='qnav-favorite-dialog-sheet' role='dialog' aria-modal='true' aria-label='Favorite conversation turn'>",
+      "<div class='qnav-favorite-dialog-sheet' role='dialog' aria-modal='true' aria-label='" + escapeHtml(t("favoriteDialog.ariaLabel")) + "'>",
       "  <div class='qnav-favorite-dialog-head'>",
       "    <div>",
-      "      <div class='qnav-favorite-dialog-kicker'>收藏这轮问答</div>",
+      "      <div class='qnav-favorite-dialog-kicker'>" + escapeHtml(t("favoriteDialog.kicker")) + "</div>",
       "      <div class='qnav-favorite-dialog-title'></div>",
       "    </div>",
-      "    <button class='qnav-favorite-dialog-close' type='button' aria-label='Close favorite dialog'>×</button>",
+      "    <button class='qnav-favorite-dialog-close' type='button' aria-label='" + escapeHtml(t("favoriteDialog.closeAria")) + "'>×</button>",
       "  </div>",
       "  <div class='qnav-favorite-dialog-body'>",
       "    <div class='qnav-favorite-dialog-preview'></div>",
       "    <label class='qnav-favorite-dialog-field'>",
-      "      <span>备注</span>",
-      "      <textarea class='qnav-favorite-dialog-input' placeholder='写一点这条内容为什么值得保存'></textarea>",
+      "      <span>" + escapeHtml(t("favoriteDialog.noteLabel")) + "</span>",
+      "      <textarea class='qnav-favorite-dialog-input' placeholder='" + escapeHtml(t("favoriteDialog.notePlaceholder")) + "'></textarea>",
       "    </label>",
       "  </div>",
       "  <div class='qnav-favorite-dialog-actions'>",
-      "    <button class='qnav-favorite-dialog-button' data-action='cancel' type='button'>取消</button>",
-      "    <button class='qnav-favorite-dialog-button is-danger' data-action='remove' type='button'>取消收藏</button>",
-      "    <button class='qnav-favorite-dialog-button is-primary' data-action='save' type='button'>保存收藏</button>",
+      "    <button class='qnav-favorite-dialog-button' data-action='cancel' type='button'>" + escapeHtml(t("favoriteDialog.cancel")) + "</button>",
+      "    <button class='qnav-favorite-dialog-button is-danger' data-action='remove' type='button'>" + escapeHtml(t("favoriteDialog.remove")) + "</button>",
+      "    <button class='qnav-favorite-dialog-button is-primary' data-action='save' type='button'>" + escapeHtml(t("favoriteDialog.save")) + "</button>",
       "  </div>",
       "</div>"
     ].join("");
@@ -683,7 +698,7 @@
       titleEl.textContent = truncateText(question.questionText || question.text || "", 120);
     }
     if (previewEl) {
-      previewEl.textContent = truncateText(question.answerText || "暂无回答", 220);
+      previewEl.textContent = truncateText(question.answerText || t("common.noAnswer"), 220);
     }
     if (inputEl instanceof HTMLTextAreaElement) {
       inputEl.value = favoriteRecord && favoriteRecord.note ? favoriteRecord.note : "";
@@ -713,6 +728,14 @@
     outline.applyAnswer(answerEl);
   }
 
+  function refreshReaderChrome(questionId) {
+    if (!virtualizer || !questionId) {
+      return;
+    }
+
+    virtualizer.showQuestion(questionId);
+  }
+
   function showQuestionById(questionId, options) {
     const config = options || {};
     const question = getQuestionById(questionId);
@@ -731,6 +754,7 @@
       virtualizer.showQuestion(questionId);
     }
     syncAnswerOutline(question);
+    refreshReaderChrome(questionId);
     if (config.resetPosition !== false) {
       scheduleQuestionPositionReset(questionId);
     }
@@ -756,6 +780,52 @@
     panel.setActiveQuestion(appState.activeQuestionId);
   }
 
+  function applyLanguagePreference(nextPreference) {
+    const normalizedPreference = storage && typeof storage.normalizeLanguagePreference === "function"
+      ? storage.normalizeLanguagePreference(nextPreference)
+      : String(nextPreference || "auto");
+
+    if (appState.languagePreference === normalizedPreference && i18n && i18n.getLanguagePreference() === normalizedPreference) {
+      return;
+    }
+
+    appState.languagePreference = normalizedPreference;
+    if (i18n && typeof i18n.setLanguagePreference === "function") {
+      i18n.setLanguagePreference(normalizedPreference);
+    }
+
+    if (panel && typeof panel.setLanguagePreference === "function") {
+      panel.setLanguagePreference(normalizedPreference);
+    }
+    if (virtualizer && typeof virtualizer.setLanguage === "function") {
+      virtualizer.setLanguage();
+    }
+    if (outline && typeof outline.setLanguage === "function") {
+      outline.setLanguage();
+    }
+
+    if (favoriteDialogEl) {
+      const dialogState = favoriteDialogState
+        ? { question: favoriteDialogState.question, favorite: favoriteDialogState.favorite }
+        : null;
+      favoriteDialogEl.remove();
+      favoriteDialogEl = null;
+      favoriteDialogState = null;
+      if (dialogState && dialogState.question) {
+        openFavoriteDialog(dialogState.question, dialogState.favorite);
+      }
+    }
+
+    renderPanel();
+  }
+
+  async function persistLanguagePreference(nextPreference) {
+    const normalizedPreference = storage && typeof storage.saveLanguagePreference === "function"
+      ? await storage.saveLanguagePreference(nextPreference)
+      : String(nextPreference || "auto");
+    applyLanguagePreference(normalizedPreference);
+  }
+
   function ensurePanel() {
     if (panel) {
       return;
@@ -763,6 +833,7 @@
 
     panel = panelModule.createPanel({
       state: appState.panelState,
+      languagePreference: appState.languagePreference,
       onOpenFavorites: openFavoritesPage,
       onToggleCurrentFavorite: () => {
         const activeQuestion = getQuestionById(appState.activeQuestionId);
@@ -774,6 +845,7 @@
       },
       onSelectQuestion,
       onSearchChange,
+      onLanguageChange: persistLanguagePreference,
       onLayoutChange: applyResponsiveLayout,
       onStateChange: persistPanelState
     });
@@ -801,11 +873,17 @@
     }
 
     chrome.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName !== "local" || !storage || !changes[storage.FAVORITES_KEY]) {
+      if (areaName !== "local" || !storage) {
         return;
       }
 
-      reloadFavorites().catch(() => {});
+      if (changes[storage.FAVORITES_KEY]) {
+        reloadFavorites().catch(() => {});
+      }
+
+      if (changes[storage.LANGUAGE_KEY]) {
+        applyLanguagePreference(changes[storage.LANGUAGE_KEY].newValue);
+      }
     });
     favoritesChangeListenerInstalled = true;
   }
@@ -931,6 +1009,7 @@
       }
     }
     syncAnswerOutline(getQuestionById(appState.activeQuestionId));
+    refreshReaderChrome(appState.activeQuestionId);
 
     appState.searchResults = buildSearchResults(appState.searchQuery);
 
@@ -1014,10 +1093,14 @@
   async function bootstrap() {
     const bootstrapResults = await Promise.all([
       storage.loadPanelState(),
-      typeof storage.loadFavorites === "function" ? storage.loadFavorites() : Promise.resolve([])
+      typeof storage.loadFavorites === "function" ? storage.loadFavorites() : Promise.resolve([]),
+      typeof storage.loadLanguagePreference === "function"
+        ? storage.loadLanguagePreference()
+        : Promise.resolve(storage.DEFAULT_LANGUAGE_PREFERENCE)
     ]);
     appState.panelState = bootstrapResults[0];
     appState.favorites = bootstrapResults[1];
+    applyLanguagePreference(bootstrapResults[2]);
     applyResponsiveLayout(appState.panelState);
 
     virtualizer = virtualizerModule.createConversationVirtualizer({

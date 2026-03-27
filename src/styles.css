@@ -201,6 +201,37 @@ html.dark #qnav-root.qnav-root {
   padding: 0 16px 12px;
 }
 
+#qnav-root .qnav-search-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+#qnav-root .qnav-language-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+#qnav-root .qnav-language-label {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--qnav-subtle);
+}
+
+#qnav-root .qnav-language-select {
+  min-width: 112px;
+  padding: 6px 10px;
+  border: 1px solid var(--qnav-border);
+  border-radius: 10px;
+  background: var(--qnav-bg-strong);
+  color: var(--qnav-text);
+  font: inherit;
+  font-size: 12px;
+}
+
 #qnav-root .qnav-search-input {
   width: 100%;
   padding: 10px 12px;
@@ -213,6 +244,11 @@ html.dark #qnav-root.qnav-root {
 }
 
 #qnav-root .qnav-search-input:focus {
+  outline: 2px solid color-mix(in srgb, var(--qnav-active) 28%, transparent);
+  outline-offset: 1px;
+}
+
+#qnav-root .qnav-language-select:focus {
   outline: 2px solid color-mix(in srgb, var(--qnav-active) 28%, transparent);
   outline-offset: 1px;
 }
@@ -423,6 +459,63 @@ html.dark .qnav-search-hit {
   overflow: auto;
 }
 
+/* Gemini-specific outline styles */
+.qnav-outline-rail.qnav-outline-gemini {
+  position: fixed;
+  left: 24px;
+  top: 112px;
+  width: 196px;
+  z-index: 2147483640;
+}
+
+.qnav-outline-rail.qnav-outline-gemini[data-outline-compact="true"] {
+  display: none;
+}
+
+.qnav-outline-toggle.qnav-outline-gemini {
+  display: none;
+  position: fixed;
+  left: 24px;
+  top: 112px;
+  z-index: 2147483640;
+}
+
+.qnav-outline-toggle.qnav-outline-gemini[data-outline-compact="true"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  padding: 8px 12px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #0f766e;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.qnav-outline-panel.qnav-outline-gemini {
+  display: none;
+  position: fixed;
+  left: 24px;
+  top: 148px;
+  width: 196px;
+  z-index: 2147483640;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.qnav-outline-panel.qnav-outline-gemini[data-outline-compact="true"][data-outline-expanded="true"] {
+  display: flex;
+}
+
 .qnav-outline-title {
   font-size: 11px;
   font-weight: 700;
@@ -543,6 +636,19 @@ html.dark .qnav-outline-item.is-active {
 }
 
 html.dark .qnav-outline-wrap[data-outline-compact="true"] .qnav-outline-toggle {
+  color: #5eead4;
+}
+
+/* Gemini dark mode outline styles */
+html.dark .qnav-outline-rail.qnav-outline-gemini,
+html.dark .qnav-outline-panel.qnav-outline-gemini {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 39, 0.7);
+}
+
+html.dark .qnav-outline-toggle.qnav-outline-gemini {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 39, 0.82);
   color: #5eead4;
 }
 

@@ -2,6 +2,8 @@
   const root = window.__QNAV__ = window.__QNAV__ || {};
   const STORAGE_KEY = "qnav.panelState.v1";
   const FAVORITES_KEY = "qnav.favorites.v1";
+  const LANGUAGE_KEY = "qnav.language.v1";
+  const DEFAULT_LANGUAGE_PREFERENCE = "auto";
   const DEFAULT_PANEL_STATE = Object.freeze({
     collapsed: false,
     width: 320
@@ -22,6 +24,15 @@
       collapsed: Boolean(state && state.collapsed),
       width: clampWidth(state && state.width)
     };
+  }
+
+  function normalizeLanguagePreference(value) {
+    const nextValue = String(value || DEFAULT_LANGUAGE_PREFERENCE).trim();
+    if (nextValue === "auto" || nextValue === "zh-CN" || nextValue === "en") {
+      return nextValue;
+    }
+
+    return DEFAULT_LANGUAGE_PREFERENCE;
   }
 
   function hasChromeStorage() {
@@ -56,9 +67,25 @@
     }
   }
 
+  function readLanguageFallback() {
+    try {
+      return normalizeLanguagePreference(window.localStorage.getItem(LANGUAGE_KEY));
+    } catch (error) {
+      return DEFAULT_LANGUAGE_PREFERENCE;
+    }
+  }
+
   function writeLocalFallback(state) {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (error) {
+      // Ignore local fallback failures.
+    }
+  }
+
+  function writeLanguageFallback(value) {
+    try {
+      window.localStorage.setItem(LANGUAGE_KEY, normalizeLanguagePreference(value));
     } catch (error) {
       // Ignore local fallback failures.
     }
@@ -281,6 +308,27 @@
     });
   }
 
+  async function loadLanguagePreference() {
+    if (!hasChromeStorage()) {
+      return readLanguageFallback();
+    }
+
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.get([LANGUAGE_KEY], (result) => {
+          if (isRuntimeLastErrorSet()) {
+            resolve(readLanguageFallback());
+            return;
+          }
+
+          resolve(normalizeLanguagePreference(result[LANGUAGE_KEY] || DEFAULT_LANGUAGE_PREFERENCE));
+        });
+      } catch (error) {
+        resolve(readLanguageFallback());
+      }
+    });
+  }
+
   async function savePanelState(state) {
     const nextState = normalizePanelState(state);
 
@@ -305,20 +353,49 @@
     });
   }
 
+  async function saveLanguagePreference(value) {
+    const nextValue = normalizeLanguagePreference(value);
+
+    if (!hasChromeStorage()) {
+      writeLanguageFallback(nextValue);
+      return nextValue;
+    }
+
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.set({ [LANGUAGE_KEY]: nextValue }, () => {
+          if (isRuntimeLastErrorSet()) {
+            writeLanguageFallback(nextValue);
+          }
+
+          resolve(nextValue);
+        });
+      } catch (error) {
+        writeLanguageFallback(nextValue);
+        resolve(nextValue);
+      }
+    });
+  }
+
   root.storage = {
     DEFAULT_PANEL_STATE,
+    DEFAULT_LANGUAGE_PREFERENCE,
     FAVORITES_KEY,
+    LANGUAGE_KEY,
     MIN_WIDTH,
     MAX_WIDTH,
     makeFavoriteId,
     normalizeFavoriteRecord,
+    normalizeLanguagePreference,
     normalizePanelState,
     loadFavorites,
+    loadLanguagePreference,
     saveFavorite,
     saveFavorites,
     loadPanelState,
     removeFavorite,
     updateFavoriteNote,
+    saveLanguagePreference,
     savePanelState
   };
 }());

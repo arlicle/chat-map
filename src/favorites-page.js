@@ -1,6 +1,7 @@
 (function initFavoritesPage() {
   const root = window.__QNAV__ = window.__QNAV__ || {};
   const storage = root.storage;
+  const i18n = root.i18n;
   if (!storage) {
     return;
   }
@@ -9,14 +10,24 @@
     favorites: [],
     filteredFavorites: [],
     query: "",
-    activeFavoriteId: ""
+    activeFavoriteId: "",
+    languagePreference: storage.DEFAULT_LANGUAGE_PREFERENCE || "auto"
   };
 
+  const titleEl = document.querySelector(".favorites-title");
+  const subtitleEl = document.querySelector(".favorites-subtitle");
+  const searchLabelEl = document.getElementById("favorites-search-label");
   const listEl = document.getElementById("favorites-list");
   const emptyEl = document.getElementById("favorites-empty");
   const countEl = document.getElementById("favorites-count");
   const detailEl = document.getElementById("favorites-detail");
   const searchInputEl = document.getElementById("favorites-search-input");
+  const languageLabelEl = document.getElementById("favorites-language-label");
+  const languageSelectEl = document.getElementById("favorites-language-select");
+
+  function t(key, params) {
+    return i18n && typeof i18n.t === "function" ? i18n.t(key, params) : key;
+  }
 
   function normalizeText(text) {
     return String(text || "").replace(/\s+/g, " ").trim();
@@ -32,7 +43,7 @@
 
   function stripSpeakerPrefix(text) {
     return String(text || "")
-      .replace(/^\s*(?:你说|你|ChatGPT说|ChatGPT 说|ChatGPT|Gemini说|Gemini 说|Gemini)\s*[:：]\s*/i, "")
+      .replace(/^\s*(?:你说|你|you said|you|ChatGPT说|ChatGPT 说|ChatGPT said|ChatGPT|Gemini说|Gemini 说|Gemini said|Gemini)\s*[:：]\s*/i, "")
       .trimStart();
   }
 
@@ -143,7 +154,7 @@
       copyButtonEl.type = "button";
       copyButtonEl.className = "favorites-code-copy";
       copyButtonEl.setAttribute("data-action", "copy-code");
-      copyButtonEl.textContent = "复制";
+      copyButtonEl.textContent = t("favorites.copy");
       headerEl.appendChild(copyButtonEl);
 
       figureEl.appendChild(headerEl);
@@ -314,7 +325,7 @@
 
   function formatDate(timestamp) {
     const date = new Date(timestamp || Date.now());
-    return new Intl.DateTimeFormat(undefined, {
+    return new Intl.DateTimeFormat(i18n && typeof i18n.getLocale === "function" ? i18n.getLocale() : undefined, {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -362,17 +373,17 @@
 
   function renderList() {
     listEl.textContent = "";
-    countEl.textContent = state.filteredFavorites.length + " 条收藏";
+    countEl.textContent = t("favorites.count", { count: state.filteredFavorites.length });
 
     if (!state.favorites.length) {
       emptyEl.hidden = false;
-      emptyEl.textContent = "还没有收藏内容。回到聊天页，点击星标即可保存。";
+      emptyEl.textContent = t("favorites.empty");
       return;
     }
 
     if (!state.filteredFavorites.length) {
       emptyEl.hidden = false;
-      emptyEl.textContent = "没有匹配到收藏内容。";
+      emptyEl.textContent = t("favorites.noMatches");
       return;
     }
 
@@ -389,11 +400,11 @@
 
       itemEl.innerHTML = [
         "<div class='favorites-item-meta'>",
-        "  <span>" + escapeHtml(favorite.conversationTitle || "未命名会话") + "</span>",
+        "  <span>" + escapeHtml(favorite.conversationTitle || t("common.untitledConversation")) + "</span>",
         "  <span>" + escapeHtml(formatDate(favorite.updatedAt)) + "</span>",
         "</div>",
         "<h2 class='favorites-item-title'>" + escapeHtml(truncateText(favorite.questionText, 96)) + "</h2>",
-        "<div class='favorites-item-preview'>" + escapeHtml(truncateText(favorite.answerText, 132) || "暂无回答") + "</div>",
+        "<div class='favorites-item-preview'>" + escapeHtml(truncateText(favorite.answerText, 132) || t("common.noAnswer")) + "</div>",
         favorite.note
           ? "<div class='favorites-item-note'>" + escapeHtml(truncateText(favorite.note, 96)) + "</div>"
           : ""
@@ -419,36 +430,38 @@
   function renderDetail() {
     const favorite = getActiveFavorite();
     if (!favorite) {
-      detailEl.innerHTML = "<div class='favorites-detail-empty'>选择左侧一条收藏，查看完整问答和备注。</div>";
+      detailEl.innerHTML = "<div class='favorites-detail-empty'>" + escapeHtml(t("favorites.detailEmpty")) + "</div>";
       return;
     }
 
-    const questionBubble = escapeHtml(stripSpeakerPrefix(normalizeMultilineText(favorite.questionText || "暂无问题"))).replace(/\n/g, "<br>");
+    const questionBubble = escapeHtml(
+      stripSpeakerPrefix(normalizeMultilineText(favorite.questionText || t("common.noQuestion")))
+    ).replace(/\n/g, "<br>");
 
     detailEl.innerHTML = [
       "<div class='favorites-detail-meta'>",
       "  <div class='favorites-detail-meta-copy'>",
-      "    <p class='favorites-detail-kicker'>收藏于 " + escapeHtml(formatDate(favorite.createdAt)) + "</p>",
-      "    <h2 class='favorites-detail-title'>" + escapeHtml(favorite.conversationTitle || "未命名会话") + "</h2>",
+      "    <p class='favorites-detail-kicker'>" + escapeHtml(t("favorites.savedAt", { date: formatDate(favorite.createdAt) })) + "</p>",
+      "    <h2 class='favorites-detail-title'>" + escapeHtml(favorite.conversationTitle || t("common.untitledConversation")) + "</h2>",
       "  </div>",
       "  <div class='favorites-detail-actions'>",
       favorite.conversationUrl
-        ? "    <button class='favorites-button' data-action='open-source'>打开原会话</button>"
+        ? "    <button class='favorites-button' data-action='open-source'>" + escapeHtml(t("favorites.openSource")) + "</button>"
         : "",
-      "    <button class='favorites-button is-danger' data-action='remove'>取消收藏</button>",
+      "    <button class='favorites-button is-danger' data-action='remove'>" + escapeHtml(t("favorites.remove")) + "</button>",
       "  </div>",
       "</div>",
       "<div class='favorites-chat-thread'>",
       "  <div class='favorites-user-row'>",
       "    <div class='favorites-user-bubble'>" + questionBubble + "</div>",
       "  </div>",
-      "  <article class='favorites-assistant-card favorites-rendered'>" + renderFavoriteContent(favorite.answerHtml, favorite.answerText || "暂无回答") + "</article>",
+      "  <article class='favorites-assistant-card favorites-rendered'>" + renderFavoriteContent(favorite.answerHtml, favorite.answerText || t("common.noAnswer")) + "</article>",
       "</div>",
       "<section class='favorites-note-editor'>",
-      "  <p class='favorites-block-label'>备注</p>",
-      "  <textarea class='favorites-note-input' placeholder='写一点这条内容为什么值得保存'>" + escapeHtml(favorite.note) + "</textarea>",
+      "  <p class='favorites-block-label'>" + escapeHtml(t("favorites.noteLabel")) + "</p>",
+      "  <textarea class='favorites-note-input' placeholder='" + escapeHtml(t("favorites.notePlaceholder")) + "'>" + escapeHtml(favorite.note) + "</textarea>",
       "  <div class='favorites-note-actions'>",
-      "    <button class='favorites-button is-primary' data-action='save-note'>保存备注</button>",
+      "    <button class='favorites-button is-primary' data-action='save-note'>" + escapeHtml(t("favorites.saveNote")) + "</button>",
       "  </div>",
       "</section>"
     ].join("");
@@ -464,12 +477,12 @@
         const codeEl = copyButtonEl.closest(".favorites-code-block")?.querySelector(".favorites-code");
         const codeText = codeEl instanceof HTMLElement ? codeEl.innerText || codeEl.textContent || "" : "";
         const copied = await copyTextToClipboard(codeText);
-        copyButtonEl.textContent = copied ? "已复制" : "复制失败";
+        copyButtonEl.textContent = copied ? t("favorites.copied") : t("favorites.copyFailed");
         copyButtonEl.classList.toggle("is-copied", copied);
         copyButtonEl.classList.toggle("is-error", !copied);
 
         window.setTimeout(() => {
-          copyButtonEl.textContent = "复制";
+          copyButtonEl.textContent = t("favorites.copy");
           copyButtonEl.classList.remove("is-copied", "is-error");
         }, 1200);
       });
@@ -551,7 +564,7 @@
   function renderRichText(text) {
     const source = normalizeMultilineText(text);
     if (!source) {
-      return "<p class='favorites-rich-paragraph'>暂无内容</p>";
+      return "<p class='favorites-rich-paragraph'>" + escapeHtml(t("common.noContent")) + "</p>";
     }
 
     let shaped = source;
@@ -599,12 +612,65 @@
     });
 
     flushListItems();
-    return html.join("") || "<p class='favorites-rich-paragraph'>暂无内容</p>";
+    return html.join("") || "<p class='favorites-rich-paragraph'>" + escapeHtml(t("common.noContent")) + "</p>";
   }
 
   function render() {
     renderList();
     renderDetail();
+  }
+
+  function updateLanguageOptions() {
+    const options = i18n && typeof i18n.getLanguageOptions === "function"
+      ? i18n.getLanguageOptions()
+      : [
+        { value: "auto", label: "Auto" },
+        { value: "zh-CN", label: "中文" },
+        { value: "en", label: "English" }
+      ];
+
+    languageSelectEl.textContent = "";
+    options.forEach((option) => {
+      const optionEl = document.createElement("option");
+      optionEl.value = option.value;
+      optionEl.textContent = option.label;
+      languageSelectEl.appendChild(optionEl);
+    });
+    languageSelectEl.value = state.languagePreference;
+  }
+
+  function updateStaticCopy() {
+    document.title = t("favorites.pageTitle");
+    if (titleEl) {
+      titleEl.textContent = t("favorites.title");
+    }
+    if (subtitleEl) {
+      subtitleEl.textContent = t("favorites.subtitle");
+    }
+    if (searchLabelEl) {
+      searchLabelEl.textContent = t("favorites.searchLabel");
+    }
+    if (languageLabelEl) {
+      languageLabelEl.textContent = t("common.language");
+    }
+    searchInputEl.placeholder = t("favorites.searchPlaceholder");
+    listEl.setAttribute("aria-label", t("favorites.listAria"));
+    languageSelectEl.setAttribute("aria-label", t("common.language"));
+    updateLanguageOptions();
+  }
+
+  function applyLanguagePreference(nextPreference) {
+    const normalizedPreference = storage && typeof storage.normalizeLanguagePreference === "function"
+      ? storage.normalizeLanguagePreference(nextPreference)
+      : String(nextPreference || "auto");
+
+    state.languagePreference = normalizedPreference;
+    if (i18n && typeof i18n.setLanguagePreference === "function") {
+      i18n.setLanguagePreference(normalizedPreference);
+    }
+
+    updateStaticCopy();
+    render();
   }
 
   async function reloadFavorites() {
@@ -621,15 +687,40 @@
     render();
   });
 
+  languageSelectEl.addEventListener("change", async (event) => {
+    const nextPreference = event.target.value || "auto";
+    const savedPreference = typeof storage.saveLanguagePreference === "function"
+      ? await storage.saveLanguagePreference(nextPreference)
+      : nextPreference;
+    applyLanguagePreference(savedPreference);
+  });
+
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName !== "local" || !changes[storage.FAVORITES_KEY]) {
+      if (areaName !== "local") {
         return;
       }
 
-      reloadFavorites();
+      if (changes[storage.FAVORITES_KEY]) {
+        reloadFavorites();
+      }
+
+      if (changes[storage.LANGUAGE_KEY]) {
+        applyLanguagePreference(changes[storage.LANGUAGE_KEY].newValue);
+      }
     });
   }
 
-  reloadFavorites();
+  (async function bootstrap() {
+    const results = await Promise.all([
+      storage.loadFavorites(),
+      typeof storage.loadLanguagePreference === "function"
+        ? storage.loadLanguagePreference()
+        : Promise.resolve(storage.DEFAULT_LANGUAGE_PREFERENCE || "auto")
+    ]);
+    state.favorites = results[0];
+    filterFavorites();
+    ensureActiveFavorite();
+    applyLanguagePreference(results[1]);
+  }());
 }());
