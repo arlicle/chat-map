@@ -225,6 +225,13 @@
       node.remove();
     });
 
+    // Remove Gemini decorative elements (avatar, spinners, etc.)
+    template.content.querySelectorAll(
+      ".avatar-gutter, bard-avatar, .avatar-component, .avatar-container, .avatar_spinner_animation, .avatar_primary"
+    ).forEach((node) => {
+      node.remove();
+    });
+
     const allowedAttributes = new Set([
       "class", "href", "title", "target", "rel", "colspan", "rowspan", "scope", "lang", "dir", "aria-label"
     ]);
