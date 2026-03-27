@@ -462,7 +462,6 @@ html.dark .qnav-search-hit {
 /* Gemini-specific outline styles */
 .qnav-outline-rail.qnav-outline-gemini {
   position: fixed;
-  left: 24px;
   top: 112px;
   width: 196px;
   z-index: 2147483640;
@@ -475,7 +474,6 @@ html.dark .qnav-search-hit {
 .qnav-outline-toggle.qnav-outline-gemini {
   display: none;
   position: fixed;
-  left: 24px;
   top: 112px;
   z-index: 2147483640;
 }
@@ -500,7 +498,6 @@ html.dark .qnav-search-hit {
 .qnav-outline-panel.qnav-outline-gemini {
   display: none;
   position: fixed;
-  left: 24px;
   top: 148px;
   width: 196px;
   z-index: 2147483640;

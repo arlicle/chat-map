@@ -46,6 +46,14 @@
       return false;
     }
 
+    // Check if heading is inside a virtualizer-managed collapsed element
+    // In that case, getClientRects() returns 0 but the heading is still valid
+    const collapsedParent = element.closest("[data-qnav-collapsed]");
+    if (collapsedParent) {
+      // Heading is inside a managed element, trust the content
+      return true;
+    }
+
     return element.getClientRects().length > 0;
   }
 
@@ -197,14 +205,30 @@
         return;
       }
 
+      // Gemini: use fixed positioning, no need for compact mode based on answer width
+      // Only switch to compact mode on very narrow screens
+      if (isGemini) {
+        compactMode = window.innerWidth < COMPACT_BREAKPOINT;
+        if (railEl) {
+          railEl.dataset.outlineCompact = compactMode ? "true" : "false";
+        }
+        if (toggleButtonEl) {
+          toggleButtonEl.dataset.outlineCompact = compactMode ? "true" : "false";
+        }
+        if (panelEl) {
+          panelEl.dataset.outlineCompact = compactMode ? "true" : "false";
+        }
+        if (!compactMode) {
+          setCompactExpanded(false);
+        }
+        return;
+      }
+
       const answerWidth = currentAnswerEl.getBoundingClientRect().width;
       compactMode = window.innerWidth < COMPACT_BREAKPOINT || answerWidth < MIN_ANSWER_WIDTH;
 
       if (wrapperEl) {
         wrapperEl.dataset.outlineCompact = compactMode ? "true" : "false";
-      }
-      if (isGemini && railEl) {
-        railEl.dataset.outlineCompact = compactMode ? "true" : "false";
       }
       if (!compactMode) {
         setCompactExpanded(false);
@@ -231,6 +255,20 @@
       }
 
       railEl.style.setProperty("--qnav-outline-max-height", Math.max(180, Math.round(maxHeight)) + "px");
+
+      // Gemini: position outline to the left of the answer element
+      if (isGemini && currentAnswerEl) {
+        const answerRect = currentAnswerEl.getBoundingClientRect();
+        const outlineWidth = 196;
+        const gap = 16;
+        const leftPos = answerRect.left - outlineWidth - gap;
+
+        if (leftPos > 0) {
+          railEl.style.left = leftPos + "px";
+          if (toggleButtonEl) toggleButtonEl.style.left = leftPos + "px";
+          if (panelEl) panelEl.style.left = leftPos + "px";
+        }
+      }
     }
 
     function createListElement() {
