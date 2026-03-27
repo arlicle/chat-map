@@ -169,22 +169,20 @@
 
   function getGeminiConversationRoot() {
     return document.querySelector("chat-window-content > div.chat-history-scroll-container") ||
-      document.querySelector(".conversation-container") ||
+      document.querySelector("chat-window-content") ||
+      document.querySelector(".chat-history-scroll-container") ||
       document.querySelector("main") ||
       document.body;
   }
 
-  function getGeminiConversationContainer() {
-    return document.querySelector(".conversation-container") || getGeminiConversationRoot();
-  }
-
   function getGeminiMessageNodes() {
-    const container = getGeminiConversationContainer();
-    if (!(container instanceof Element)) {
+    // Query from the chat history container or document body to get all messages
+    const root = getGeminiConversationRoot();
+    if (!(root instanceof Element)) {
       return [];
     }
 
-    return Array.from(container.querySelectorAll(GEMINI_MESSAGE_SELECTOR)).filter((node) => {
+    return Array.from(root.querySelectorAll(GEMINI_MESSAGE_SELECTOR)).filter((node) => {
       return node instanceof HTMLElement && !node.closest("immersive-panel");
     });
   }
