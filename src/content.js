@@ -90,6 +90,19 @@
     return sourceUrl;
   }
 
+  function isValidConversationUrl(url) {
+    const sourceUrl = String(url || window.location.href || "");
+    // ChatGPT conversation URLs: /c/xxx or /conversation/xxx
+    if (/\/c\/[^/?#]+/.test(sourceUrl) || /\/conversation\/[^/?#]+/.test(sourceUrl)) {
+      return true;
+    }
+    // Gemini conversation URLs: /app/xxx
+    if (/\/app\/[^/?#]+/.test(sourceUrl)) {
+      return true;
+    }
+    return false;
+  }
+
   function getConversationTitle() {
     const title = normalizeSearchText(document.title);
     if (!title) {
@@ -953,6 +966,15 @@
       }
       closeFavoriteDialog();
       appState.currentUrl = window.location.href;
+
+      // If URL is not a valid conversation format, destroy panel immediately
+      if (!isValidConversationUrl(appState.currentUrl)) {
+        appState.questions = [];
+        appState.questionsSignature = "";
+        appState.activeQuestionId = null;
+        destroyPanel();
+        return;
+      }
     }
 
     adapter = extractor.resolveConversationAdapter();
