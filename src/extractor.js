@@ -14,6 +14,12 @@
     return String(text || "").replace(/\s+/g, " ").trim();
   }
 
+  function stripUserPrefix(text) {
+    return String(text || "")
+      .replace(/^\s*(?:你说|你|you said|you)\s*[:：]?\s*/i, "")
+      .trimStart();
+  }
+
   function normalizeMultilineText(text) {
     return String(text || "")
       .replace(/\r\n?/g, "\n")
@@ -232,12 +238,13 @@
         return getGeminiDisplayBlock(roleEl);
       },
       getMessageText(roleEl) {
-        return getFirstMatchingText(roleEl, [
+        const rawText = getFirstMatchingText(roleEl, [
           ".query-text",
           ".user-query-bubble-with-background",
           "user-query-content",
           ".query-container"
         ]);
+        return stripUserPrefix(rawText);
       },
       getObservationRoot() {
         return getGeminiConversationRoot();
